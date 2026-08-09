@@ -2,7 +2,7 @@
 
 This fork adds a native Tildagon/MicroPython version of Plane Radar while leaving the original ESP32-C3/Arduino firmware and upstream history intact.
 
-Plane Radar shows live nearby aircraft from the adsb.fi v3 API on the badge's round display, with a radar-style LED ring. It works on the original 2024 Tildagon and automatically unlocks extra controls when a 2026 Spaceagon frontboard is fitted.
+Plane Radar shows live nearby aircraft from adsb.fi on the badge's round display, with a radar-style LED ring. It works on the original 2024 Tildagon and automatically unlocks extra controls when compatible GPS, Keepdexpansion and 2026 Spaceagon hardware are present.
 
 ## First start
 
@@ -16,7 +16,7 @@ Plane Radar checks for a location provider **once when it starts**. It prefers T
 
 For compatibility with older GPS EEPROM firmware, Plane Radar also checks active hexpansion apps for a valid `position` property even when they do not advertise the newer capability.
 
-The chosen location remains fixed while the radar runs; it does not continuously follow GPS. Press **Down** whenever you want to request a fresh GPS fix. If no new fix is available, the existing radar centre is retained.
+The chosen location remains fixed while the local radar runs; it does not continuously follow GPS. Press **Down** whenever you want to request a fresh GPS fix. If no new fix is available, the existing radar centre is retained.
 
 A manually entered latitude/longitude can be saved at any time with **OK/Confirm** and remains available when no GPS fix is present.
 
@@ -31,11 +31,56 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 | Up | Toggle kilometres / miles |
 | Down | Request a new GPS position |
 | OK / Confirm | Edit and save manual latitude / longitude |
+| Left + Right | Open Follow Flight without a keyboard |
 | Cancel / Back | Minimise Plane Radar |
+
+## Follow Flight
+
+Plane Radar can leave your local position and follow a particular aircraft anywhere that live ADS-B position data is available.
+
+### Keepdexpansion input
+
+The Keepdexpansion is optional. If it is fitted and its keyboard app is running, **simply start typing a flight number or ADS-B callsign while the radar is visible**. Plane Radar opens the flight-search dialog and keeps the first character you typed. Pressing **Enter** with no preceding character opens an empty flight-search dialog.
+
+Without a Keepdexpansion, press **Left + Right together** and enter the same value with Tildagon's normal text dialog.
+
+Passenger-facing flight numbers and operational ADS-B callsigns are not always identical. Plane Radar performs a small best-effort conversion for several common UK airline prefixes (for example `BA123` to `BAW123`, `U2123` to `EZY123` and `FR123` to `RYR123`). If that does not find the aircraft, enter the operational callsign shown by an ADS-B tracker.
+
+### Following behaviour
+
+Once a target is found, Plane Radar locks onto its Mode-S hex identity and:
+
+- moves the radar centre to the followed aircraft;
+- keeps that aircraft fixed at the centre with a cyan direction marker;
+- fetches and displays other aircraft around it using the normal range presets;
+- updates the followed aircraft independently from the surrounding traffic;
+- alternates automatically every **5 seconds** between the radar and a flight-data page.
+
+The data page shows the information available from the live ADS-B feed, including callsign, aircraft type/registration when present, altitude, groundspeed, track, vertical rate, squawk and Mode-S hex.
+
+While following:
+
+| Control | Action |
+|---|---|
+| Left or Down | Refresh the followed aircraft now |
+| Right | Change the surrounding-aircraft range |
+| Up | Toggle km / miles |
+| OK / Confirm | Follow a different flight |
+| Cancel / Back | Stop following and restore your previous local radar position |
+
+### Flight plan and progress bar
+
+When route metadata can be resolved, the flight-data page shows the origin and destination plus a small journey progress bar and approximate distance remaining.
+
+The percentage is deliberately labelled as an **estimate**. It is calculated from the aircraft's current great-circle distance to the destination compared with the origin-to-destination great-circle distance. It is not an airline operational flight-plan completion value, and it will not account for actual routing, holds, diversions or intermediate waypoints.
+
+If route metadata is unavailable, the bar becomes an indeterminate moving marker. If the returned route is marked implausible for the aircraft's current position, Plane Radar shows the route as unverified rather than displaying a misleading percentage.
 
 ## RGB LED radar
 
-While Plane Radar is foregrounded it temporarily takes control of Tildagon's 12 onboard RGB LEDs:
+While Plane Radar is foregrounded it temporarily takes control of Tildagon's 12 onboard RGB LEDs.
+
+In normal/local radar mode:
 
 - a green sweep rotates clockwise around the badge;
 - aircraft illuminate the LED sector matching their bearing on the radar;
@@ -43,7 +88,26 @@ While Plane Radar is foregrounded it temporarily takes control of Tildagon's 12 
 - off-scale aircraft remain visible as dim magenta bearing cues;
 - a subtle blue marker across the top LED pair indicates a GPS-derived radar centre.
 
+In **Follow Flight** radar view the normal sweep and nearby traffic remain, with two extra directional cues:
+
+- **cyan** points in the followed aircraft's current direction of travel;
+- **green** points towards the resolved destination when route data is available.
+
+If the followed aircraft temporarily disappears from the live feed, the ring gains a **red pulse** while Plane Radar tries to reacquire it.
+
+On the alternating flight-data page the 12 badge LEDs become a journey-progress ring: completed sectors are teal/green, the current sector is brighter cyan and remaining sectors are dim blue. When route progress is unknown they use an indeterminate cyan state instead.
+
 When Plane Radar is minimised or terminated it restores the normal Tildagon LED pattern.
+
+## Keepdexpansion RGB backlight
+
+The Keepdexpansion's RGB backlight is used as a second, quieter status display while a flight is being followed:
+
+- with verified route progress, the logical keyboard light segments fill from teal/green towards cyan as the journey advances;
+- with a target lock but no usable route percentage, the keyboard gives a cyan heartbeat;
+- if the ADS-B target is lost, the keyboard pulses red.
+
+Plane Radar only borrows the keyboard LEDs when their driver reports them available. It releases ownership when following stops, when the app is minimised, or when it terminates. If the keyboard previously had a static custom colour, Plane Radar restores that colour; if it was following the normal Tildagon pattern, the driver resumes doing so.
 
 ## Spaceagon enhancements
 
@@ -93,11 +157,13 @@ A short Fire press then toggles heading-up on/off while preserving the calibrati
 
 The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, callsign and altitude labels, heading triangles, track/speed vectors and off-scale direction dots.
 
-When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The location marker shows `GPS`, `MAN` or `NO LOC`.
+When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
+
+The UI is drawn for the badge's native 240×240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
 
 ## Host-side tests
 
-The geometry, ADS-B parsing, GPS validation, LED mapping and Spaceagon helper functions can be tested without badge hardware:
+The geometry, ADS-B parsing, GPS validation, LED mapping, Spaceagon helpers and flight-follow route calculations can be tested without badge hardware:
 
 ```sh
 python -m unittest discover -s tests -v
@@ -106,12 +172,12 @@ python -m unittest discover -s tests -v
 The app source can also be syntax checked with standard Python:
 
 ```sh
-python -m py_compile app.py adsb.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
+python -m py_compile app.py radar_base.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
 ```
 
 ## Publishing
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider and 2026-frontboard enhancements. Before the first app-store release, add the repository topic `tildagon-app` and create a release/tag matching the metadata version (initially `v0.1.0`).
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Before the first app-store release, add the repository topic `tildagon-app` and create a release/tag matching the metadata version (initially `v0.1.0`).
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
 
@@ -121,6 +187,6 @@ The Tildagon port does not yet include the embedded major-airport runway overlay
 
 Network requests currently use Tildagon's synchronous `requests` module, so a slow HTTPS request may briefly pause the UI during a poll.
 
-## Attribution
+## Data and attribution
 
-Original Plane Radar project: **MatixYo/ESP32-Plane-Radar**, MIT licensed. This port retains the same licence and uses the same adsb.fi data source as upstream.
+Original Plane Radar project: **MatixYo/ESP32-Plane-Radar**, MIT licensed. This port retains the same licence and uses adsb.fi for live aircraft data. Follow Flight additionally uses adsb.lol/VRS standing route data when available to resolve origin and destination metadata.
