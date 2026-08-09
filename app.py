@@ -1,11 +1,12 @@
 """Live ADS-B aircraft radar for the Tildagon round display."""
 import math
+import time
 
 import app
 import requests
 import settings
 from app_components import TextDialog
-from events.input import Buttons, BUTTON_TYPES
+from events.input import Buttons, BUTTON_TYPES, ButtonDownEvent, ButtonUpEvent
 from system.eventbus import eventbus
 from system.patterndisplay.events import PatternDisable, PatternEnable
 from tildagonos import tildagonos
@@ -14,12 +15,36 @@ try:
     from .radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from .adsb import build_url, parse_aircraft
     from .location_provider import get_best_position
-    from .led_radar import led_index_from_offsets, max_rgb
+    from .led_radar import led_index_for_bearing, max_rgb
+    from .spaceagon import (
+        angular_distance,
+        bearing_from_offsets,
+        calibrated_heading,
+        is_spaceagon,
+        raw_compass_heading,
+        relative_bearing,
+        rotate_screen_xy,
+        touch_bearing,
+        zoom_index,
+    )
+    from .instructions_qr import draw_qr
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
     from location_provider import get_best_position
-    from led_radar import led_index_from_offsets, max_rgb
+    from led_radar import led_index_for_bearing, max_rgb
+    from spaceagon import (
+        angular_distance,
+        bearing_from_offsets,
+        calibrated_heading,
+        is_spaceagon,
+        raw_compass_heading,
+        relative_bearing,
+        rotate_screen_xy,
+        touch_bearing,
+        zoom_index,
+    )
+    from instructions_qr import draw_qr
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -28,12 +53,19 @@ RING_LABELS_KM = (5, 10, 15, 25)
 DEFAULT_RANGE_INDEX = 1
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
+COMPASS_UPDATE_MS = 200
+NORMAL_SPLASH_MS = 1800
+FIRST_SPLASH_MS = 5000
+SELECTION_MS = 7000
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
     "lat": None,
     "lon": None,
     "range_index": DEFAULT_RANGE_INDEX,
     "use_miles": False,
+    "intro_seen": False,
+    "heading_up": False,
+    "compass_zero": None,
 }
 
 BACKGROUND = (0.01, 0.025, 0.07)
@@ -45,6 +77,7 @@ MAGENTA = (1.0, 0.12, 0.66)
 YELLOW = (1.0, 0.78, 0.12)
 ALT_TEXT = (0.72, 0.75, 0.82)
 GPS_TEXT = (0.25, 1.0, 0.45)
+CYAN = (0.2, 0.82, 1.0)
 
 
 def _load_config():
@@ -91,6 +124,30 @@ class PlaneRadarApp(app.App):
         self.dialog = None
         self.setup_stage = None
         self.pending_lat = None
+
+        self.spaceagon = is_spaceagon()
+        self.heading_up = bool(self.config.get("heading_up", False)) and self.spaceagon
+        self.compass_zero = self.config.get("compass_zero")
+        self.compass_heading = None
+        self.compass_elapsed = COMPASS_UPDATE_MS
+        self.pending_touch_bearing = None
+        self.pending_zoom = 0
+        self.pending_joy_action = None
+        self.joy_fire_started = None
+        self.suppress_confirm = False
+        if self.spaceagon:
+            eventbus.on(ButtonDownEvent, self._handle_spaceagon_down, self)
+            eventbus.on(ButtonUpEvent, self._handle_spaceagon_up, self)
+
+        self.selected_item = None
+        self.selected_distance = None
+        self.selected_bearing = None
+        self.selection_elapsed = 0
+
+        self.first_run = not bool(self.config.get("intro_seen", False))
+        self.view = "splash"
+        self.splash_elapsed = 0
+
         self.led_elapsed = LED_UPDATE_MS
         self.sweep_led = 1
         self.leds_active = False
@@ -111,9 +168,27 @@ class PlaneRadarApp(app.App):
                 "lon": self.manual_lon,
                 "range_index": self.range_index,
                 "use_miles": self.use_miles,
+                "heading_up": self.heading_up,
+                "compass_zero": self.compass_zero,
             }
         )
         _save_config(self.config)
+
+    def _mark_intro_seen(self):
+        if not self.config.get("intro_seen", False):
+            self.config["intro_seen"] = True
+            _save_config(self.config)
+
+    def _finish_splash(self):
+        self._mark_intro_seen()
+        self.view = "radar"
+        self.button_states.clear()
+        if self.center_lat is None or self.center_lon is None:
+            self.status = "No GPS - OK manual"
+        elif self.location_source == "gps":
+            self.status = "GPS position"
+        else:
+            self.status = "Manual position"
 
     def _dialog_cleanup(self):
         if self.dialog is not None:
@@ -162,9 +237,6 @@ class PlaneRadarApp(app.App):
             self._dialog_cleanup()
             self.setup_stage = None
             self._persist_preferences()
-
-            # Manual entry explicitly switches the current radar centre. GPS can
-            # be requested again at any time with DOWN.
             self.center_lat = self.manual_lat
             self.center_lon = self.manual_lon
             self.location_source = "manual"
@@ -201,7 +273,6 @@ class PlaneRadarApp(app.App):
             self.poll_elapsed = POLL_INTERVAL_MS
             return True
 
-        # A failed refresh must not erase a perfectly useful existing centre.
         if self.center_lat is not None and self.center_lon is not None:
             self.status = "No GPS fix - kept location"
             return False
@@ -219,6 +290,159 @@ class PlaneRadarApp(app.App):
         self.location_provider = None
         self.status = "No GPS - OK manual"
         return False
+
+    def _handle_spaceagon_down(self, event):
+        if self.view != "radar" or self.dialog is not None:
+            return
+        name = getattr(event.button, "name", "")
+        bearing = touch_bearing(name)
+        if bearing is not None:
+            self.pending_touch_bearing = bearing
+            return
+        if name == "LEFTPROX":
+            self.pending_zoom = -1
+            return
+        if name == "RIGHTPROX":
+            self.pending_zoom = 1
+            return
+        if "JOYFIRE" in name and self.joy_fire_started is None:
+            self.joy_fire_started = time.ticks_ms()
+            self.suppress_confirm = True
+
+    def _handle_spaceagon_up(self, event):
+        if self.view != "radar" or self.dialog is not None:
+            return
+        name = getattr(event.button, "name", "")
+        if "JOYFIRE" not in name or self.joy_fire_started is None:
+            return
+        held_ms = time.ticks_diff(time.ticks_ms(), self.joy_fire_started)
+        self.joy_fire_started = None
+        self.pending_joy_action = "calibrate" if held_ms >= 1200 else "toggle"
+        self.suppress_confirm = True
+
+    def _read_compass_raw(self):
+        if not self.spaceagon:
+            return None
+        try:
+            import imu
+
+            return raw_compass_heading(imu.mag_read())
+        except Exception as exc:
+            print("plane-radar: compass read failed:", exc)
+            return None
+
+    def _update_compass(self):
+        raw = self._read_compass_raw()
+        if raw is None:
+            self.compass_heading = None
+            return
+        self.compass_heading = calibrated_heading(raw, self.compass_zero or 0.0)
+
+    def _toggle_heading_up(self):
+        if not self.spaceagon:
+            return
+        if self.heading_up:
+            self.heading_up = False
+            self.status = "North-up"
+            self._persist_preferences()
+            return
+        if self.compass_zero is None:
+            self.status = "Hold FIRE facing north to calibrate"
+            return
+        self._update_compass()
+        if self.compass_heading is None:
+            self.status = "Compass unavailable"
+            return
+        self.heading_up = True
+        self.status = "Heading-up"
+        self._persist_preferences()
+
+    def _calibrate_compass(self):
+        raw = self._read_compass_raw()
+        if raw is None:
+            self.status = "Compass unavailable"
+            return
+        self.compass_zero = raw
+        self.compass_heading = 0.0
+        self.heading_up = True
+        self.status = "Compass calibrated - heading-up"
+        self._persist_preferences()
+
+    def _display_heading(self):
+        if self.heading_up and self.compass_heading is not None:
+            return self.compass_heading
+        return 0.0
+
+    def _process_spaceagon_actions(self):
+        if not self.spaceagon:
+            return
+
+        if self.pending_zoom:
+            new_index = zoom_index(
+                self.range_index, self.pending_zoom, len(RING_LABELS_KM)
+            )
+            self.pending_zoom = 0
+            if new_index != self.range_index:
+                self.range_index = new_index
+                self._persist_preferences()
+                self.poll_elapsed = POLL_INTERVAL_MS
+                self.status = "Range " + self._range_label()
+
+        if self.pending_touch_bearing is not None:
+            target = self.pending_touch_bearing
+            self.pending_touch_bearing = None
+            self._select_aircraft_by_touch(target)
+
+        if self.pending_joy_action is not None:
+            action = self.pending_joy_action
+            self.pending_joy_action = None
+            if action == "calibrate":
+                self._calibrate_compass()
+            else:
+                self._toggle_heading_up()
+
+        if self.suppress_confirm and self.button_states.get(BUTTON_TYPES["CONFIRM"]):
+            self.button_states.clear()
+        if self.suppress_confirm and self.joy_fire_started is None:
+            self.suppress_confirm = False
+
+    def _select_aircraft_by_touch(self, relative_touch_bearing):
+        if self.center_lat is None or self.center_lon is None:
+            self.status = "Set location first"
+            return
+        if not self.aircraft:
+            self.status = "No aircraft to inspect"
+            return
+
+        target_true = (relative_touch_bearing + self._display_heading()) % 360.0
+        best = None
+        best_key = None
+        for item in self.aircraft:
+            lat = item.get("lat")
+            lon = item.get("lon")
+            if lat is None or lon is None:
+                continue
+            east, north, distance = offset_km(
+                self.center_lat, self.center_lon, lat, lon
+            )
+            bearing = bearing_from_offsets(east, north)
+            if bearing is None:
+                continue
+            difference = angular_distance(bearing, target_true)
+            key = (difference, distance)
+            if best_key is None or key < best_key:
+                best_key = key
+                best = (item, distance, bearing)
+
+        if best is None or best_key[0] > 30.0:
+            self.selected_item = None
+            clock = int(round(relative_touch_bearing / 30.0)) or 12
+            self.status = "No traffic near {} o'clock".format(clock)
+            return
+
+        self.selected_item, self.selected_distance, self.selected_bearing = best
+        self.selection_elapsed = 0
+        self.status = "Traffic selected"
 
     def _acquire_leds(self):
         if self.leds_active:
@@ -256,6 +480,7 @@ class PlaneRadarApp(app.App):
             index = (self.sweep_led - 1 + offset) % 12
             frame[index] = max_rgb(frame[index], colour)
 
+        display_heading = self._display_heading()
         if self.center_lat is not None and self.center_lon is not None:
             for item in self.aircraft:
                 lat = item.get("lat")
@@ -265,9 +490,11 @@ class PlaneRadarApp(app.App):
                 east, north, distance = offset_km(
                     self.center_lat, self.center_lon, lat, lon
                 )
-                led = led_index_from_offsets(east, north)
-                if led is None:
+                bearing = bearing_from_offsets(east, north)
+                if bearing is None:
                     continue
+                led_bearing = relative_bearing(bearing, display_heading)
+                led = led_index_for_bearing(led_bearing)
                 if distance <= self.outer_km:
                     closeness = 1.0 - min(distance / self.outer_km, 1.0)
                     colour = (
@@ -323,6 +550,7 @@ class PlaneRadarApp(app.App):
                 return
             self.aircraft = parse_aircraft(response.json())
             self.status = "{} aircraft".format(len(self.aircraft))
+            self.selected_item = None
         except Exception as exc:
             print("plane-radar: ADS-B fetch failed:", exc)
             self.status = "ADS-B fetch failed"
@@ -333,17 +561,32 @@ class PlaneRadarApp(app.App):
                 except Exception:
                     pass
 
+    def _handle_splash_input(self, delta):
+        self.splash_elapsed += delta
+        duration = FIRST_SPLASH_MS if self.first_run else NORMAL_SPLASH_MS
+        if self.button_states.get(BUTTON_TYPES["CONFIRM"]):
+            self.button_states.clear()
+            self._mark_intro_seen()
+            self.view = "instructions"
+            return
+        if self.button_states.get(BUTTON_TYPES["CANCEL"]):
+            self._finish_splash()
+            return
+        if self.splash_elapsed >= duration:
+            self._finish_splash()
+
+    def _handle_instructions_input(self):
+        if (
+            self.button_states.get(BUTTON_TYPES["CONFIRM"])
+            or self.button_states.get(BUTTON_TYPES["CANCEL"])
+        ):
+            self.button_states.clear()
+            self._finish_splash()
+
     def update(self, delta):
         if not self.leds_active:
             self._acquire_leds()
 
-        self._open_setup_dialog_if_needed()
-        if self.dialog is not None:
-            return
-
-        # GPS is intentionally sampled once when the app starts. Users can
-        # request a fresh fix with DOWN; we do not continuously move the radar
-        # centre underneath them.
         if not self.position_checked:
             self.position_checked = True
             self._refresh_position(startup=True)
@@ -352,6 +595,31 @@ class PlaneRadarApp(app.App):
         if self.led_elapsed >= LED_UPDATE_MS:
             self.led_elapsed = 0
             self._update_radar_leds()
+
+        if self.spaceagon:
+            self.compass_elapsed += delta
+            if self.compass_elapsed >= COMPASS_UPDATE_MS:
+                self.compass_elapsed = 0
+                if self.heading_up:
+                    self._update_compass()
+
+        if self.view == "splash":
+            self._handle_splash_input(delta)
+            return
+        if self.view == "instructions":
+            self._handle_instructions_input()
+            return
+
+        self._open_setup_dialog_if_needed()
+        if self.dialog is not None:
+            return
+
+        self._process_spaceagon_actions()
+
+        if self.selected_item is not None:
+            self.selection_elapsed += delta
+            if self.selection_elapsed >= SELECTION_MS:
+                self.selected_item = None
 
         if self.button_states.get(BUTTON_TYPES["RIGHT"]):
             self.range_index = (self.range_index + 1) % len(RING_LABELS_KM)
@@ -390,6 +658,12 @@ class PlaneRadarApp(app.App):
             return str(int(round(self.ring_label_km / KM_PER_MILE))) + "mi"
         return str(self.ring_label_km) + "km"
 
+    def _draw_cardinal(self, ctx, label, true_bearing, radius=103):
+        display_bearing = relative_bearing(true_bearing, self._display_heading())
+        x, y = heading_vector(display_bearing, radius)
+        width = ctx.text_width(label)
+        ctx.move_to(x - width / 2, y + 3).text(label)
+
     def _draw_grid(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
         ctx.line_width = 1
@@ -403,22 +677,28 @@ class PlaneRadarApp(app.App):
         ctx.move_to(0, -GRID_RADIUS)
         ctx.line_to(0, GRID_RADIUS)
         ctx.stroke()
+
         ctx.rgb(*WHITE)
-        ctx.font_size = 10
-        ctx.move_to(-3, -103).text("N")
-        ctx.move_to(-3, 110).text("S")
-        ctx.move_to(101, 3).text("E")
-        ctx.move_to(-109, 3).text("W")
+        ctx.font_size = 9
+        self._draw_cardinal(ctx, "N", 0)
+        self._draw_cardinal(ctx, "E", 90)
+        self._draw_cardinal(ctx, "S", 180)
+        self._draw_cardinal(ctx, "W", 270)
+
         ctx.font_size = 8
         ctx.rgb(*GRID).move_to(73, -4).text(self._range_label())
         ctx.rgb(*WHITE).arc(0, 0, 2, 0, 2 * math.pi, True).fill()
 
-    def _draw_aircraft(self, ctx, item):
+        if self.heading_up and self.compass_heading is not None:
+            text = "HDG {:03d}".format(int(round(self.compass_heading)) % 360)
+            width = ctx.text_width(text)
+            ctx.rgb(*CYAN).move_to(-width / 2, -116).text(text)
+
+    def _screen_point_for_aircraft(self, item):
         lat = item.get("lat")
         lon = item.get("lon")
         if lat is None or lon is None:
-            return
-
+            return None
         x, y, distance = radar_xy(
             self.center_lat,
             self.center_lon,
@@ -427,23 +707,45 @@ class PlaneRadarApp(app.App):
             self.outer_km,
             GRID_RADIUS,
         )
+        if self.heading_up and self.compass_heading is not None:
+            x, y = rotate_screen_xy(x, y, self.compass_heading)
+        return x, y, distance
+
+    def _draw_aircraft(self, ctx, item):
+        lat = item.get("lat")
+        lon = item.get("lon")
+        if lat is None or lon is None:
+            return
+
+        point = self._screen_point_for_aircraft(item)
+        if point is None:
+            return
+        x, y, distance = point
+
         if distance > self.outer_km:
             east, north, _ = offset_km(
                 self.center_lat, self.center_lon, lat, lon
             )
             x, y = rim_xy(east, north, RIM_RADIUS)
+            if self.heading_up and self.compass_heading is not None:
+                x, y = rotate_screen_xy(x, y, self.compass_heading)
             ctx.rgb(*RED).arc(x, y, 2.2, 0, 2 * math.pi, True).fill()
             return
 
+        display_heading = self._display_heading()
         speed = item.get("speed", 0.0) or 0.0
         vector_len = 6.0 + min(float(speed), 600.0) / 600.0 * 12.0
-        vdx, vdy = heading_vector(item.get("track", 0.0), vector_len)
+        vdx, vdy = heading_vector(
+            relative_bearing(item.get("track", 0.0), display_heading), vector_len
+        )
         ctx.rgb(*MAGENTA).begin_path()
         ctx.move_to(x, y)
         ctx.line_to(x + vdx, y + vdy)
         ctx.stroke()
 
-        fdx, fdy = heading_vector(item.get("heading", 0.0), 5.0)
+        fdx, fdy = heading_vector(
+            relative_bearing(item.get("heading", 0.0), display_heading), 5.0
+        )
         rdx = -fdy * 0.6
         rdy = fdx * 0.6
         bx = x - fdx * 0.8
@@ -454,6 +756,12 @@ class PlaneRadarApp(app.App):
         ctx.line_to(bx - rdx, by - rdy)
         ctx.close_path()
         ctx.fill()
+
+        if item is self.selected_item:
+            ctx.rgb(*YELLOW)
+            ctx.line_width = 1.5
+            ctx.arc(x, y, 8, 0, 2 * math.pi, True).stroke()
+            ctx.line_width = 1
 
         label = item.get("callsign", "")
         alt = item.get("alt", "")
@@ -469,6 +777,36 @@ class PlaneRadarApp(app.App):
                 ax = x + 7 if x < 0 else x - 7 - alt_width
                 ctx.rgb(*ALT_TEXT).move_to(ax, ty + 8).text(alt)
 
+    def _distance_text(self, distance_km):
+        if distance_km is None:
+            return ""
+        if self.use_miles:
+            return "{:.1f}mi".format(distance_km / KM_PER_MILE)
+        return "{:.1f}km".format(distance_km)
+
+    def _draw_selection(self, ctx):
+        if self.selected_item is None:
+            return
+        callsign = self.selected_item.get("callsign", "?")
+        type_code = self.selected_item.get("type", "")
+        alt = self.selected_item.get("alt", "")
+        speed = self.selected_item.get("speed", 0.0) or 0.0
+        line1 = callsign + (("  " + type_code) if type_code else "")
+        line2 = "{}  {}  {}kt".format(
+            alt or "alt ?",
+            self._distance_text(self.selected_distance),
+            int(round(float(speed))),
+        )
+        ctx.rgba(0, 0, 0, 0.78).rectangle(-94, 48, 188, 39).fill()
+        ctx.font_size = 9
+        ctx.rgb(*YELLOW)
+        w1 = ctx.text_width(line1)
+        ctx.move_to(-w1 / 2, 60).text(line1)
+        ctx.font_size = 8
+        ctx.rgb(*WHITE)
+        w2 = ctx.text_width(line2)
+        ctx.move_to(-w2 / 2, 74).text(line2)
+
     def _draw_location_source(self, ctx):
         ctx.font_size = 7
         if self.location_source == "gps":
@@ -478,13 +816,82 @@ class PlaneRadarApp(app.App):
         else:
             ctx.rgb(*YELLOW).move_to(-105, -88).text("NO LOC")
 
+        if self.spaceagon:
+            ctx.rgb(*CYAN).move_to(77, -88).text("SP")
+            if self.heading_up:
+                ctx.rgb(*CYAN).move_to(76, -78).text("HDG")
+
+    def _draw_splash(self, ctx):
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.line_width = 1
+        for radius in (30, 55, 82):
+            ctx.rgb(*GRID_DIM).arc(0, 0, radius, 0, 2 * math.pi, True).stroke()
+        ctx.rgb(*GRID_DIM).begin_path()
+        ctx.move_to(-82, 0)
+        ctx.line_to(82, 0)
+        ctx.move_to(0, -82)
+        ctx.line_to(0, 82)
+        ctx.stroke()
+
+        sweep = (self.splash_elapsed % 1800) * 360.0 / 1800.0
+        sx, sy = heading_vector(sweep, 82)
+        ctx.rgb(0.05, 0.9, 0.38)
+        ctx.line_width = 2
+        ctx.begin_path().move_to(0, 0).line_to(sx, sy).stroke()
+        ctx.line_width = 1
+        for bearing, radius in ((40, 58), (132, 43), (276, 70)):
+            px, py = heading_vector(bearing, radius)
+            ctx.rgb(*RED).arc(px, py, 2.4, 0, 2 * math.pi, True).fill()
+
+        ctx.font_size = 18
+        ctx.rgb(*WHITE)
+        title = "PLANE RADAR"
+        ctx.move_to(-ctx.text_width(title) / 2, -104).text(title)
+        ctx.font_size = 8
+        subtitle = "LIVE ADS-B / TILDAGON"
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(subtitle) / 2, -84).text(subtitle)
+
+        if self.first_run:
+            draw_qr(ctx, 0, 23, 2)
+            ctx.font_size = 8
+            prompt = "Click OK for instructions"
+            ctx.rgb(*YELLOW).move_to(-ctx.text_width(prompt) / 2, 78).text(prompt)
+        else:
+            ctx.font_size = 10
+            text = "Scanning the skies..."
+            ctx.rgb(*YELLOW).move_to(-ctx.text_width(text) / 2, 12).text(text)
+
+    def _draw_instructions(self, ctx):
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.font_size = 13
+        ctx.rgb(*WHITE)
+        title = "PLANE RADAR HELP"
+        ctx.move_to(-ctx.text_width(title) / 2, -108).text(title)
+        ctx.font_size = 8
+        text = "Scan for controls & setup"
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(text) / 2, -91).text(text)
+        draw_qr(ctx, 0, -12, 3)
+        ctx.font_size = 8
+        hint = "OK / Back to radar"
+        ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 92).text(hint)
+
     def draw(self, ctx):
         ctx.save()
+        if self.view == "splash":
+            self._draw_splash(ctx)
+            ctx.restore()
+            return
+        if self.view == "instructions":
+            self._draw_instructions(ctx)
+            ctx.restore()
+            return
+
         self._draw_grid(ctx)
         if self.center_lat is not None and self.center_lon is not None:
             for item in self.aircraft:
                 self._draw_aircraft(ctx, item)
         self._draw_location_source(ctx)
+        self._draw_selection(ctx)
         if self.status:
             ctx.font_size = 8
             ctx.rgb(*YELLOW)
