@@ -19,4 +19,8 @@ feature = { type = "Capability", identifier = "https://tildagon.badge.emfcamp.or
 
 [[metadata.capabilities]]
 required = false
+feature = { type = "Capability", identifier = "https://tildagon.badge.emfcamp.org/capabilities/registry/merged_neopixels/" }
+
+[[metadata.capabilities]]
+required = false
 feature = { type = "2026 Frontboard" }
