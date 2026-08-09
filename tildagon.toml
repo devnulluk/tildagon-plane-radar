@@ -16,3 +16,7 @@ version = "0.1.0"
 [[metadata.capabilities]]
 required = false
 feature = { type = "Capability", identifier = "https://tildagon.badge.emfcamp.org/capabilities/registry/position/" }
+
+[[metadata.capabilities]]
+required = false
+feature = { type = "2026 Frontboard" }
