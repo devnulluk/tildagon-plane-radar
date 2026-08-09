@@ -2,6 +2,15 @@ import unittest
 
 from led_radar import bearing_from_offsets, led_index_for_bearing, led_index_from_offsets
 from location_provider import normalise_position
+from spaceagon import (
+    angular_distance,
+    calibrated_heading,
+    raw_compass_heading,
+    relative_bearing,
+    rotate_screen_xy,
+    touch_bearing,
+    zoom_index,
+)
 
 
 class LocationProviderTests(unittest.TestCase):
@@ -30,6 +39,36 @@ class LEDRadarTests(unittest.TestCase):
         self.assertEqual(led_index_from_offsets(0, 1), 1)
         self.assertEqual(led_index_from_offsets(0, -1), 7)
         self.assertIsNone(led_index_from_offsets(0, 0))
+
+
+class SpaceagonTests(unittest.TestCase):
+    def test_clock_touch_bearings(self):
+        self.assertEqual(touch_bearing("TOUCH12"), 0.0)
+        self.assertEqual(touch_bearing("TOUCH03"), 90.0)
+        self.assertEqual(touch_bearing("TOUCH06"), 180.0)
+        self.assertEqual(touch_bearing("TOUCH09"), 270.0)
+        self.assertIsNone(touch_bearing("TOUCH13"))
+
+    def test_relative_bearing_and_wrap(self):
+        self.assertEqual(relative_bearing(90, 30), 60.0)
+        self.assertEqual(relative_bearing(10, 350), 20.0)
+        self.assertEqual(angular_distance(350, 10), 20.0)
+
+    def test_heading_up_rotation(self):
+        x, y = rotate_screen_xy(10, 0, 90)
+        self.assertAlmostEqual(x, 0.0, places=6)
+        self.assertAlmostEqual(y, -10.0, places=6)
+
+    def test_compass_zero_calibration(self):
+        raw = raw_compass_heading((1, 1, 0))
+        self.assertAlmostEqual(raw, 45.0)
+        self.assertAlmostEqual(calibrated_heading(raw, 45), 0.0)
+
+    def test_proximity_zoom_clamps(self):
+        self.assertEqual(zoom_index(1, -1, 4), 0)
+        self.assertEqual(zoom_index(1, 1, 4), 2)
+        self.assertEqual(zoom_index(0, -1, 4), 0)
+        self.assertEqual(zoom_index(3, 1, 4), 3)
 
 
 if __name__ == "__main__":
