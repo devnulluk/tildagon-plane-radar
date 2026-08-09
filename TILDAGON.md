@@ -4,7 +4,27 @@ This fork adds a native Tildagon/MicroPython version of Plane Radar while leavin
 
 The port keeps the original project's core behaviour: a north-up round radar, live aircraft from the adsb.fi v3 API, 5/10/15/25 km presets, heading triangles, track/speed vectors, callsign and altitude labels, off-scale direction dots, km/miles and automatic polling.
 
-Tildagon manages Wi-Fi, so the Arduino WiFiManager captive portal is not needed. Latitude, longitude, range and units are stored through Tildagon's `settings` module.
+Tildagon manages Wi-Fi, so the Arduino WiFiManager captive portal is not needed. Range, units and a manual fallback location are stored through Tildagon's `settings` module.
+
+## Location
+
+Plane Radar prefers a live location from Tildagon's optional **Position capability**. If a running GPS hexpansion or another app provides a valid `(latitude, longitude)` position, the radar automatically follows it and shows `GPS` on screen.
+
+For compatibility with older GPS EEPROM firmware, Plane Radar also checks active hexpansion apps for a valid `position` property even when they do not yet advertise the Position capability.
+
+A manually entered latitude/longitude remains stored as a fallback. Losing GPS therefore falls back to the saved location when one exists; GPS returning automatically takes priority again. If no GPS fix and no manual location are available, the app waits for GPS and offers manual setup via Confirm/OK.
+
+## RGB LED radar
+
+While Plane Radar is in the foreground it temporarily takes control of Tildagon's 12 onboard RGB LEDs and turns them into an outer radar ring:
+
+- a green sweep rotates clockwise around the badge;
+- aircraft illuminate the LED sector matching their bearing from the radar centre;
+- nearer in-range aircraft appear brighter red/magenta;
+- off-scale aircraft remain as dim magenta bearing cues;
+- a subtle blue marker across the top pair indicates that the radar centre currently comes from GPS.
+
+The normal Tildagon LED pattern is restored when Plane Radar is minimised or terminated.
 
 ## Controls
 
@@ -13,14 +33,12 @@ Tildagon manages Wi-Fi, so the Arduino WiFiManager captive portal is not needed.
 | Right | Cycle 5 / 10 / 15 / 25 km range |
 | Left | Refresh aircraft now |
 | Up | Toggle kilometres / miles |
-| Confirm / OK | Edit radar latitude and longitude |
+| Confirm / OK | Edit/save manual fallback latitude and longitude |
 | Cancel / Back | Minimise Plane Radar |
-
-On first launch the app asks for latitude and longitude as decimal coordinates.
 
 ## Host-side tests
 
-The geometry and ADS-B parsing helpers do not depend on Tildagon modules:
+The geometry, ADS-B parsing, GPS validation and LED-bearing helpers do not depend on Tildagon modules:
 
 ```sh
 python -m unittest discover -s tests -v
@@ -28,7 +46,7 @@ python -m unittest discover -s tests -v
 
 ## Publishing
 
-The repository includes `tildagon.toml` for Tildagon packaging. Before the first app-store release, add the repository topic `tildagon-app` and create a release/tag matching the metadata version (initially `v0.1.0`).
+The repository includes `tildagon.toml` for Tildagon packaging and declares the Position capability as an optional enhancement. Before the first app-store release, add the repository topic `tildagon-app` and create a release/tag matching the metadata version (initially `v0.1.0`).
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes it from release archives intended for the badge.
 
