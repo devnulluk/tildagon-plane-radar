@@ -8,11 +8,13 @@ Tildagon manages Wi-Fi, so the Arduino WiFiManager captive portal is not needed.
 
 ## Location
 
-Plane Radar prefers a live location from Tildagon's optional **Position capability**. If a running GPS hexpansion or another app provides a valid `(latitude, longitude)` position, the radar automatically follows it and shows `GPS` on screen.
+Plane Radar checks Tildagon's optional **Position capability once when the app starts**. If a running GPS hexpansion or another app provides a valid `(latitude, longitude)` position, that fix becomes the radar centre and the display shows `GPS`.
 
 For compatibility with older GPS EEPROM firmware, Plane Radar also checks active hexpansion apps for a valid `position` property even when they do not yet advertise the Position capability.
 
-A manually entered latitude/longitude remains stored as a fallback. Losing GPS therefore falls back to the saved location when one exists; GPS returning automatically takes priority again. If no GPS fix and no manual location are available, the app waits for GPS and offers manual setup via Confirm/OK.
+GPS is deliberately **not polled continuously**. The radar centre stays fixed until the user asks for another fix with **Down** (or joystick down on a Spaceagon). If the refresh cannot obtain a fix, the existing radar centre is retained rather than being replaced unexpectedly.
+
+A manually entered latitude/longitude remains stored and can be selected at any time with Confirm/OK. If no GPS fix and no manual location are available, the app offers manual setup.
 
 ## RGB LED radar
 
@@ -33,8 +35,11 @@ The normal Tildagon LED pattern is restored when Plane Radar is minimised or ter
 | Right | Cycle 5 / 10 / 15 / 25 km range |
 | Left | Refresh aircraft now |
 | Up | Toggle kilometres / miles |
-| Confirm / OK | Edit/save manual fallback latitude and longitude |
+| Down | Request a fresh GPS/Position fix |
+| Confirm / OK | Edit/save manual latitude and longitude |
 | Cancel / Back | Minimise Plane Radar |
+
+On the Spaceagon, the 5-way joystick automatically provides the same generic Up/Down/Left/Right/Confirm controls.
 
 ## Host-side tests
 
