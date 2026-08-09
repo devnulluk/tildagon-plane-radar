@@ -6,15 +6,20 @@ import requests
 import settings
 from app_components import TextDialog
 from events.input import Buttons, BUTTON_TYPES
+from system.eventbus import eventbus
+from system.patterndisplay.events import PatternDisable, PatternEnable
+from tildagonos import tildagonos
 
 try:
     from .radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from .adsb import build_url, parse_aircraft
     from .location_provider import get_best_position
+    from .led_radar import led_index_from_offsets, max_rgb
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
     from location_provider import get_best_position
+    from led_radar import led_index_from_offsets, max_rgb
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -23,6 +28,7 @@ RING_LABELS_KM = (5, 10, 15, 25)
 DEFAULT_RANGE_INDEX = 1
 POLL_INTERVAL_MS = 5000
 POSITION_CHECK_MS = 1000
+LED_UPDATE_MS = 100
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
     "lat": None,
@@ -90,6 +96,10 @@ class PlaneRadarApp(app.App):
         self.dialog = None
         self.setup_stage = None
         self.pending_lat = None
+        self.led_elapsed = LED_UPDATE_MS
+        self.sweep_led = 1
+        self.leds_active = False
+        self._acquire_leds()
 
     @property
     def ring_label_km(self):
@@ -211,6 +221,91 @@ class PlaneRadarApp(app.App):
                 self.location_source = "none"
                 self.status = "Waiting for GPS - OK manual"
 
+    def _acquire_leds(self):
+        if self.leds_active:
+            return
+        eventbus.emit(PatternDisable())
+        try:
+            tildagonos.set_led_power(True)
+        except Exception:
+            pass
+        self.leds_active = True
+        self.led_elapsed = LED_UPDATE_MS
+
+    def _release_leds(self):
+        if not self.leds_active:
+            return
+        try:
+            for led in range(1, 13):
+                tildagonos.leds[led] = (0, 0, 0)
+            tildagonos.leds.write()
+        except Exception:
+            pass
+        eventbus.emit(PatternEnable())
+        self.leds_active = False
+
+    def _update_radar_leds(self):
+        if not self.leds_active:
+            return
+
+        frame = [(0, 0, 0) for _ in range(12)]
+
+        # A classic green radar sweep with a short fading trail.
+        for offset, colour in (
+            (0, (0, 52, 12)),
+            (-1, (0, 18, 5)),
+            (-2, (0, 6, 2)),
+        ):
+            index = (self.sweep_led - 1 + offset) % 12
+            frame[index] = max_rgb(frame[index], colour)
+
+        if self.center_lat is not None and self.center_lon is not None:
+            for item in self.aircraft:
+                lat = item.get("lat")
+                lon = item.get("lon")
+                if lat is None or lon is None:
+                    continue
+                east, north, distance = offset_km(
+                    self.center_lat, self.center_lon, lat, lon
+                )
+                led = led_index_from_offsets(east, north)
+                if led is None:
+                    continue
+
+                # Nearby traffic is hotter/brighter; off-scale traffic remains
+                # a dim magenta bearing cue around the rim.
+                if distance <= self.outer_km:
+                    closeness = 1.0 - min(distance / self.outer_km, 1.0)
+                    red = int(120 + 135 * closeness)
+                    magenta = int(28 + 62 * closeness)
+                    colour = (red, 4, magenta)
+                else:
+                    colour = (42, 0, 24)
+                frame[led - 1] = max_rgb(frame[led - 1], colour)
+
+        # A subtle blue top marker says the radar centre is coming from GPS.
+        if self.location_source == "gps":
+            frame[0] = max_rgb(frame[0], (0, 10, 28))
+            frame[11] = max_rgb(frame[11], (0, 10, 28))
+
+        try:
+            for led, colour in enumerate(frame, 1):
+                tildagonos.leds[led] = colour
+            tildagonos.leds.write()
+        except Exception as exc:
+            print("plane-radar: LED update failed:", exc)
+            self._release_leds()
+
+        self.sweep_led = self.sweep_led % 12 + 1
+
+    def minimise(self):
+        self._release_leds()
+        super().minimise()
+
+    def terminate(self, restore_pattern=False):
+        self._release_leds()
+        super().terminate(restore_pattern=restore_pattern)
+
     def _fetch_aircraft(self):
         if self.center_lat is None or self.center_lon is None:
             return
@@ -244,9 +339,17 @@ class PlaneRadarApp(app.App):
                     pass
 
     def update(self, delta):
+        if not self.leds_active:
+            self._acquire_leds()
+
         self._open_setup_dialog_if_needed()
         if self.dialog is not None:
             return
+
+        self.led_elapsed += delta
+        if self.led_elapsed >= LED_UPDATE_MS:
+            self.led_elapsed = 0
+            self._update_radar_leds()
 
         self.position_elapsed += delta
         if self.position_elapsed >= POSITION_CHECK_MS:
