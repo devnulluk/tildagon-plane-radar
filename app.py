@@ -27,7 +27,6 @@ RIM_RADIUS = 108
 RING_LABELS_KM = (5, 10, 15, 25)
 DEFAULT_RANGE_INDEX = 1
 POLL_INTERVAL_MS = 5000
-POSITION_CHECK_MS = 1000
 LED_UPDATE_MS = 100
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
@@ -84,15 +83,11 @@ class PlaneRadarApp(app.App):
             else "none"
         )
         self.location_provider = None
+        self.position_checked = False
         self.use_miles = bool(self.config.get("use_miles", False))
         self.aircraft = []
-        self.status = (
-            "Connecting..."
-            if self.location_source == "manual"
-            else "Waiting for GPS - OK manual"
-        )
+        self.status = "Checking GPS..."
         self.poll_elapsed = POLL_INTERVAL_MS
-        self.position_elapsed = POSITION_CHECK_MS
         self.dialog = None
         self.setup_stage = None
         self.pending_lat = None
@@ -131,10 +126,11 @@ class PlaneRadarApp(app.App):
     def _cancel_location(self):
         self._dialog_cleanup()
         self.setup_stage = None
-        if self.center_lat is None or self.center_lon is None:
-            self.status = "Waiting for GPS - OK manual"
-        else:
-            self.status = "Location unchanged"
+        self.status = (
+            "No location - DOWN GPS"
+            if self.center_lat is None or self.center_lon is None
+            else "Location unchanged"
+        )
 
     def _complete_location(self):
         text = self.dialog.text.strip() if self.dialog is not None else ""
@@ -167,15 +163,14 @@ class PlaneRadarApp(app.App):
             self.setup_stage = None
             self._persist_preferences()
 
-            # GPS remains authoritative while it has a fix; this merely updates
-            # the saved fallback location.
-            if self.location_source != "gps":
-                self.center_lat = self.manual_lat
-                self.center_lon = self.manual_lon
-                self.location_source = "manual"
-                self.location_provider = None
-                self.poll_elapsed = POLL_INTERVAL_MS
-            self.status = "Manual fallback saved"
+            # Manual entry explicitly switches the current radar centre. GPS can
+            # be requested again at any time with DOWN.
+            self.center_lat = self.manual_lat
+            self.center_lon = self.manual_lon
+            self.location_source = "manual"
+            self.location_provider = None
+            self.poll_elapsed = POLL_INTERVAL_MS
+            self.status = "Manual location saved"
 
     def _open_setup_dialog_if_needed(self):
         if self.dialog is not None or self.setup_stage is None:
@@ -193,33 +188,37 @@ class PlaneRadarApp(app.App):
             on_cancel=self._cancel_location,
         )
 
-    def _refresh_position(self):
+    def _refresh_position(self, startup=False):
+        """Try GPS once; retain the existing centre when no new fix exists."""
         result = get_best_position()
         if result is not None:
             lat, lon, provider_name = result
-            acquired = self.location_source != "gps"
             self.center_lat = lat
             self.center_lon = lon
             self.location_source = "gps"
             self.location_provider = provider_name
-            if acquired:
-                self.status = "GPS lock"
-                self.poll_elapsed = POLL_INTERVAL_MS
-            return
+            self.status = "GPS lock" if startup else "GPS updated"
+            self.poll_elapsed = POLL_INTERVAL_MS
+            return True
 
-        if self.location_source == "gps":
+        # A failed refresh must not erase a perfectly useful existing centre.
+        if self.center_lat is not None and self.center_lon is not None:
+            self.status = "No GPS fix - kept location"
+            return False
+
+        if self.manual_lat is not None and self.manual_lon is not None:
+            self.center_lat = self.manual_lat
+            self.center_lon = self.manual_lon
+            self.location_source = "manual"
             self.location_provider = None
-            if self.manual_lat is not None and self.manual_lon is not None:
-                self.center_lat = self.manual_lat
-                self.center_lon = self.manual_lon
-                self.location_source = "manual"
-                self.status = "GPS lost - manual location"
-                self.poll_elapsed = POLL_INTERVAL_MS
-            else:
-                self.center_lat = None
-                self.center_lon = None
-                self.location_source = "none"
-                self.status = "Waiting for GPS - OK manual"
+            self.status = "No GPS - manual location"
+            self.poll_elapsed = POLL_INTERVAL_MS
+            return False
+
+        self.location_source = "none"
+        self.location_provider = None
+        self.status = "No GPS - OK manual"
+        return False
 
     def _acquire_leds(self):
         if self.leds_active:
@@ -249,8 +248,6 @@ class PlaneRadarApp(app.App):
             return
 
         frame = [(0, 0, 0) for _ in range(12)]
-
-        # A classic green radar sweep with a short fading trail.
         for offset, colour in (
             (0, (0, 52, 12)),
             (-1, (0, 18, 5)),
@@ -271,19 +268,17 @@ class PlaneRadarApp(app.App):
                 led = led_index_from_offsets(east, north)
                 if led is None:
                     continue
-
-                # Nearby traffic is hotter/brighter; off-scale traffic remains
-                # a dim magenta bearing cue around the rim.
                 if distance <= self.outer_km:
                     closeness = 1.0 - min(distance / self.outer_km, 1.0)
-                    red = int(120 + 135 * closeness)
-                    magenta = int(28 + 62 * closeness)
-                    colour = (red, 4, magenta)
+                    colour = (
+                        int(120 + 135 * closeness),
+                        4,
+                        int(28 + 62 * closeness),
+                    )
                 else:
                     colour = (42, 0, 24)
                 frame[led - 1] = max_rgb(frame[led - 1], colour)
 
-        # A subtle blue top marker says the radar centre is coming from GPS.
         if self.location_source == "gps":
             frame[0] = max_rgb(frame[0], (0, 10, 28))
             frame[11] = max_rgb(frame[11], (0, 10, 28))
@@ -346,15 +341,17 @@ class PlaneRadarApp(app.App):
         if self.dialog is not None:
             return
 
+        # GPS is intentionally sampled once when the app starts. Users can
+        # request a fresh fix with DOWN; we do not continuously move the radar
+        # centre underneath them.
+        if not self.position_checked:
+            self.position_checked = True
+            self._refresh_position(startup=True)
+
         self.led_elapsed += delta
         if self.led_elapsed >= LED_UPDATE_MS:
             self.led_elapsed = 0
             self._update_radar_leds()
-
-        self.position_elapsed += delta
-        if self.position_elapsed >= POSITION_CHECK_MS:
-            self.position_elapsed = 0
-            self._refresh_position()
 
         if self.button_states.get(BUTTON_TYPES["RIGHT"]):
             self.range_index = (self.range_index + 1) % len(RING_LABELS_KM)
@@ -367,6 +364,9 @@ class PlaneRadarApp(app.App):
         elif self.button_states.get(BUTTON_TYPES["UP"]):
             self.use_miles = not self.use_miles
             self._persist_preferences()
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["DOWN"]):
+            self._refresh_position(startup=False)
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self.setup_stage = "lat"
