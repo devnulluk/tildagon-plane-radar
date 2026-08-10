@@ -14,6 +14,8 @@ try:
         build_route_url,
         build_target_url,
         initial_bearing,
+        is_flight_key,
+        nearest_target_within,
         normalise_flight_query,
         parse_route,
         parse_target,
@@ -28,6 +30,8 @@ except ImportError:
         build_route_url,
         build_target_url,
         initial_bearing,
+        is_flight_key,
+        nearest_target_within,
         normalise_flight_query,
         parse_route,
         parse_target,
@@ -42,6 +46,7 @@ FOLLOW_TARGET_FIRST_MS = 2500
 FOLLOW_TARGET_MS = 5000
 FOLLOW_ROUTE_DELAY_MS = 1400
 EMERGENCY_SCAN_MS = 30000
+EMERGENCY_RADIUS_KM = 500
 EMERGENCY_CODES = ("7500", "7600", "7700")
 
 
@@ -101,7 +106,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if self.view != "radar":
             return
         if self.center_lat is None or self.center_lon is None:
-            if name == "ENTER" or (len(name) == 1 and name.isalnum()):
+            if name == "ENTER" or is_flight_key(name):
                 self.pending_manual_open = True
                 self.pending_location_seed = "" if name == "ENTER" else name.upper()
                 self.keyboard_confirm_pending = True
@@ -111,7 +116,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
             # physical C. Flight search still opens as soon as a callsign is
             # typed, without stealing Enter from Radar Options.
             return
-        if len(name) == 1 and name.isalnum():
+        if is_flight_key(name):
             self.pending_flight_open = True
             self.pending_flight_seed = name
 
@@ -254,7 +259,10 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
     def _scan_global_emergency(self):
         self.emergency_scan_elapsed = 0
-        target = parse_target(self._get_json(build_squawk_url("7700")))
+        payload = self._get_json(build_squawk_url("7700"))
+        target = nearest_target_within(
+            payload, self.center_lat, self.center_lon, EMERGENCY_RADIUS_KM
+        )
         if target is None:
             return False
         return self._begin_follow_target(

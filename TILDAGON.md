@@ -28,8 +28,9 @@ Ongoing radar status is shown in a high-contrast, one- or two-line card at the b
 
 The local radar watches the ADS-B emergency status and the standard 7500,
 7600 and 7700 squawks. It also checks adsb.fi's dedicated 7700 endpoint every
-30 seconds, allowing general-emergency aircraft to be detected well beyond the
-local radar radius without downloading country-wide traffic. When detected,
+30 seconds and acts on the nearest result within 500 km, allowing
+general-emergency aircraft to be detected across a broad UK-sized region
+without downloading ordinary country-wide traffic. When detected,
 Plane Radar switches to a single-aircraft focus view and uses a slow, smooth
 red LED breathing pulse rather than a flash. Press Back to return to the local
 radar.

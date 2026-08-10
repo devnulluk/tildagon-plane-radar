@@ -19,12 +19,23 @@ IATA_TO_ICAO = {
 }
 
 
+def is_flight_key(value):
+    """MicroPython-safe check for one ASCII callsign character."""
+    return (
+        isinstance(value, str)
+        and len(value) == 1
+        and ("A" <= value <= "Z" or "0" <= value <= "9")
+    )
+
+
 def normalise_flight_query(value):
-    text = "".join(ch for ch in str(value or "").upper() if ch.isalnum())
+    text = "".join(
+        ch for ch in str(value or "").upper() if is_flight_key(ch)
+    )
     if len(text) >= 3:
         prefix = text[:2]
         suffix = text[2:]
-        if prefix in IATA_TO_ICAO and suffix and suffix[0].isdigit():
+        if prefix in IATA_TO_ICAO and suffix and "0" <= suffix[0] <= "9":
             text = IATA_TO_ICAO[prefix] + suffix
     return text[:12]
 
@@ -133,6 +144,32 @@ def great_circle_km(lat1, lon1, lat2, lon2):
     return EARTH_RADIUS_KM * 2.0 * math.atan2(
         math.sqrt(a), math.sqrt(max(0.0, 1.0 - a))
     )
+
+
+def nearest_target_within(payload, center_lat, center_lon, radius_km):
+    """Return the nearest positioned target inside a regional radius."""
+    if not isinstance(payload, dict):
+        return None
+    raw_items = payload.get("ac")
+    if not isinstance(raw_items, list):
+        raw_items = payload.get("aircraft")
+    if not isinstance(raw_items, list):
+        return None
+    nearest = None
+    nearest_distance = None
+    for raw in raw_items:
+        target = parse_target({"ac": [raw]})
+        if target is None:
+            continue
+        distance = great_circle_km(
+            center_lat, center_lon, target["lat"], target["lon"]
+        )
+        if distance > float(radius_km):
+            continue
+        if nearest_distance is None or distance < nearest_distance:
+            nearest = target
+            nearest_distance = distance
+    return nearest
 
 
 def _airport_code(airport):

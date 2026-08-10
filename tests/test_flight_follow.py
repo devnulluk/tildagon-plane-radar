@@ -4,6 +4,8 @@ from flight_follow import (
     build_target_url,
     great_circle_km,
     initial_bearing,
+    is_flight_key,
+    nearest_target_within,
     normalise_flight_query,
     parse_route,
     parse_target,
@@ -22,6 +24,12 @@ class FlightQueryTests(unittest.TestCase):
 
     def test_target_url_can_use_stable_hex(self):
         self.assertTrue(build_target_url(hex_id="406ABC").endswith("/406abc"))
+
+    def test_keyboard_character_check_does_not_need_cpython_string_helpers(self):
+        self.assertTrue(is_flight_key("A"))
+        self.assertTrue(is_flight_key("7"))
+        self.assertFalse(is_flight_key("-"))
+        self.assertFalse(is_flight_key("ENTER"))
 
 
 class TargetParsingTests(unittest.TestCase):
@@ -45,6 +53,15 @@ class TargetParsingTests(unittest.TestCase):
 
     def test_target_without_position_is_not_followable(self):
         self.assertIsNone(parse_target({"ac": [{"flight": "BAW123"}]}))
+
+    def test_regional_emergency_filter_chooses_nearest_in_range(self):
+        payload = {"ac": [
+            {"flight": "FAR", "lat": 60.0, "lon": 10.0},
+            {"flight": "NEAR", "lat": 52.0, "lon": 0.1},
+        ]}
+        target = nearest_target_within(payload, 51.8, 0.0, 500)
+        self.assertEqual(target["callsign"], "NEAR")
+        self.assertIsNone(nearest_target_within(payload, 0.0, 0.0, 100))
 
 
 class RouteProgressTests(unittest.TestCase):
