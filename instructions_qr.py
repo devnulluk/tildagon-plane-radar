@@ -1,50 +1,41 @@
-"""Dependency-free QR code for the Plane Radar instructions page.
+"""Dependency-free QR code for the Plane Radar instructions page."""
 
-During draft/hardware testing this points at the development branch so the QR
-works before the port is merged. Switch it to /blob/main/TILDAGON.md for the
-release commit.
-"""
-
-INSTRUCTIONS_URL = "https://github.com/devnulluk/tildagon-plane-radar/blob/tildagon-port/TILDAGON.md"
-QR_SIZE = 37
+INSTRUCTIONS_URL = "https://github.com/devnulluk/tildagon-plane-radar/blob/main/TILDAGON.md"
+QR_SIZE = 33
 QR_ROWS = (
-    0x1FD335CC7F,
-    0x105DDC9441,
-    0x17477ACE5D,
-    0x174445EE5D,
-    0x175EE85C5D,
-    0x1052244141,
-    0x1FD555557F,
-    0x0017722400,
-    0x1CDCCA21F3,
-    0x1184CBB347,
-    0x0EFA2E231B,
-    0x01B08745F3,
-    0x14E7B9326B,
-    0x1B251B3B6F,
-    0x0BCDDB7241,
-    0x09B7701730,
-    0x1E68CA716B,
-    0x0018C3BA6F,
-    0x08562A2241,
-    0x02A4814288,
-    0x17E3B93569,
-    0x101D127BEB,
-    0x1349DFBA61,
-    0x1C8B772578,
-    0x19C0D92269,
-    0x0B30C3B747,
-    0x194232EF25,
-    0x0330975148,
-    0x187FB911F2,
-    0x00113BA919,
-    0x1FC1E2A95D,
-    0x1057571318,
-    0x1748DB33FB,
-    0x1744FB3096,
-    0x175632BC1D,
-    0x1054B035A8,
-    0x1FDF971151,
+    0x01FC58E27F,
+    0x01054E1041,
+    0x0174151C5D,
+    0x0175D4805D,
+    0x017485325D,
+    0x0105B7C541,
+    0x01FD55557F,
+    0x0000E27C00,
+    0x01F7A4A7AA,
+    0x0113597E47,
+    0x014F435D3A,
+    0x007A1608D4,
+    0x00C4D687B8,
+    0x011B897263,
+    0x015F7708F2,
+    0x0063A35CE4,
+    0x011574A4B2,
+    0x0159D1724B,
+    0x018D174DCA,
+    0x01F8010A84,
+    0x01E7549712,
+    0x0171E03A4B,
+    0x015482DDEA,
+    0x012BC45AFC,
+    0x013776E5F1,
+    0x0001A1EB1D,
+    0x01FD5F8B5A,
+    0x0104E53F1F,
+    0x017534A5F2,
+    0x0175797BB0,
+    0x01751ED74E,
+    0x0105A77CAC,
+    0x01FDB4A70A,
 )
 
 
