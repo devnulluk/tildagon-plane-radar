@@ -63,6 +63,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.pending_flight_seed = ""
         self.keyboard_confirm_pending = False
         self.pending_manual_open = False
+        self.pending_location_submit = False
         self.keeb_lights = KeebDeckLights(self)
         self._keyboard_handler = self._handle_keyboard_down
         eventbus.on(ButtonDownEvent, self._keyboard_handler, self)
@@ -73,8 +74,6 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
     def _handle_keyboard_down(self, event):
         """Typing on Keepdexpansion starts flight search from the radar."""
-        if self.view != "radar" or self.dialog is not None:
-            return
         try:
             key = event.button.find_parent_in_group("Keyboard")
         except Exception:
@@ -82,6 +81,13 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if key is None:
             return
         name = getattr(key, "name", "")
+        if self.dialog is not None:
+            if self.setup_stage is not None and name == "ENTER":
+                self.pending_location_submit = True
+                self.keyboard_confirm_pending = True
+            return
+        if self.view != "radar":
+            return
         if self.center_lat is None or self.center_lon is None:
             if name == "ENTER" or (len(name) == 1 and name.isalnum()):
                 self.pending_manual_open = True
@@ -372,6 +378,15 @@ class PlaneRadarApp(base.PlaneRadarApp):
         return False
 
     def update(self, delta):
+        if self.pending_location_submit:
+            self.pending_location_submit = False
+            self.keyboard_confirm_pending = False
+            # TextDialog may already have consumed Enter. If it has not, make
+            # the keyboard action submit the location field explicitly.
+            if self.dialog is not None and self.setup_stage is not None:
+                self._complete_location()
+            self.button_states.clear()
+
         if self.pending_manual_open and self.dialog is None:
             self.pending_manual_open = False
             self.pending_flight_open = False

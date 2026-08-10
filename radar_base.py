@@ -54,7 +54,8 @@ CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
 RIM_RADIUS = 108
 RING_LABELS_KM = (2, 5, 10, 15)
-DEFAULT_RANGE_INDEX = 1
+DEFAULT_RANGE_INDEX = 2
+RANGE_PROFILE = 2
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
 COMPASS_UPDATE_MS = 200
@@ -68,6 +69,7 @@ DEFAULT_CONFIG = {
     "lat": None,
     "lon": None,
     "range_index": DEFAULT_RANGE_INDEX,
+    "range_profile": RANGE_PROFILE,
     "use_miles": False,
     "intro_seen": False,
     "heading_up": False,
@@ -92,6 +94,12 @@ def _load_config():
     config = DEFAULT_CONFIG.copy()
     if isinstance(stored, dict):
         config.update(stored)
+        # The first close-range profile reused index 1, silently changing an
+        # existing 10 km preference into 5 km. Restore a balanced 10 km view
+        # once, while retaining explicit range changes made afterwards.
+        if stored.get("range_profile") != RANGE_PROFILE:
+            config["range_index"] = DEFAULT_RANGE_INDEX
+            config["range_profile"] = RANGE_PROFILE
     index = config.get("range_index", DEFAULT_RANGE_INDEX)
     if not isinstance(index, int) or index < 0 or index >= len(RING_LABELS_KM):
         config["range_index"] = DEFAULT_RANGE_INDEX
@@ -228,6 +236,9 @@ class PlaneRadarApp(app.App):
 
     def _complete_location(self):
         text = self.dialog.text.strip() if self.dialog is not None else ""
+        # C and keyboard Enter both arrive as CONFIRM. Do not let the submit
+        # event survive the dialog and immediately reopen Radar Options.
+        self.button_states.clear()
         if self.setup_stage == "postcode":
             self._dialog_cleanup()
             postcode = normalise_postcode(text)
@@ -293,6 +304,7 @@ class PlaneRadarApp(app.App):
         self.center_lon = lon
         self.location_source = "manual"
         self.location_provider = None
+        self.view = "radar"
         self.poll_elapsed = POLL_INTERVAL_MS
 
     def _show_location_notice(self, title, detail):

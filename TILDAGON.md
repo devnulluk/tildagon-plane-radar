@@ -26,7 +26,7 @@ Ongoing radar status is shown in a high-contrast, one- or two-line card at the b
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with Left/Right and press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with Left/Right and press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Submit postcode and coordinate fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -41,6 +41,8 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 | C / Confirm | Open radar options |
 | Left + Right | Open Follow Flight without a keyboard |
 | Cancel / Back | Minimise Plane Radar |
+
+The default range is 10 km. The 2 and 5 km presets provide close-up views, while 15 km shows more traffic near the visible horizon.
 
 ## Follow Flight
 
