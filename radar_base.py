@@ -182,6 +182,8 @@ class PlaneRadarApp(app.App):
         self.first_run = not bool(self.config.get("intro_seen", False))
         self.view = "splash"
         self.splash_elapsed = 0
+        self._splash_button_handler = self._handle_splash_button_down
+        eventbus.on(ButtonDownEvent, self._splash_button_handler, self)
 
         self.led_elapsed = LED_UPDATE_MS
         self.sweep_led = 1
@@ -229,6 +231,16 @@ class PlaneRadarApp(app.App):
             self.status = "Wi-Fi estimate"
         else:
             self.status = "Manual position"
+
+    def _handle_splash_button_down(self, event):
+        """Open the manual immediately, even while startup updates are busy."""
+        if self.view != "splash":
+            return
+        if BUTTON_TYPES["CONFIRM"] not in event.button:
+            return
+        self.button_states.clear()
+        self._mark_intro_seen()
+        self.view = "instructions"
 
     def _dialog_cleanup(self):
         if self.dialog is not None:
@@ -643,6 +655,12 @@ class PlaneRadarApp(app.App):
 
     def terminate(self, restore_pattern=False):
         self._release_leds()
+        try:
+            eventbus.remove(
+                ButtonDownEvent, self._splash_button_handler, self
+            )
+        except Exception:
+            pass
         super().terminate(restore_pattern=restore_pattern)
 
     def _fetch_aircraft(self):
