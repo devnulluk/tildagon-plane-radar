@@ -6,7 +6,7 @@ class AdsbTests(unittest.TestCase):
         url=build_url(51.5,-0.1,18.52); self.assertIn("lat/51.500000/lon/-0.100000",url); self.assertTrue(url.endswith("/dist/10.0"))
     def test_parser_normalises_preferred_fields(self):
         payload={"ac":[{"lat":51.51,"lon":-0.12,"flight":" BAW123 ","hex":"400abc","t":"A320","true_heading":92.0,"track":95.0,"gs":410.0,"alt_baro":35025}]}
-        item=parse_aircraft(payload)[0]; self.assertEqual(item["callsign"],"BAW123"); self.assertEqual(item["type"],"A320"); self.assertEqual(item["heading"],92.0); self.assertEqual(item["track"],95.0); self.assertEqual(item["speed"],410.0); self.assertEqual(item["alt"],"35k")
+        item=parse_aircraft(payload)[0]; self.assertEqual(item["callsign"],"BAW123"); self.assertEqual(item["icao"],"400abc"); self.assertEqual(item["type"],"A320"); self.assertEqual(item["heading"],92.0); self.assertEqual(item["track"],95.0); self.assertEqual(item["speed"],410.0); self.assertEqual(item["alt"],"35k")
     def test_parser_falls_back_to_hex_and_track(self):
         item=parse_aircraft({"ac":[{"lat":51.0,"lon":0.0,"hex":"abc123","track":270,"ias":120,"alt_geom":950}]})[0]
         self.assertEqual(item["callsign"],"abc123"); self.assertEqual(item["heading"],270.0); self.assertEqual(item["speed"],120.0); self.assertEqual(item["alt"],"950")

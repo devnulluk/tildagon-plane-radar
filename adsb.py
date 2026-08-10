@@ -39,6 +39,7 @@ def parse_aircraft(payload, show_ground=False, max_aircraft=MAX_AIRCRAFT):
         callsign = _trim(plane.get("flight")) or _trim(plane.get("hex"), "?")
         result.append({
             "lat": float(lat), "lon": float(lon),
+            "icao": _trim(plane.get("hex")),
             "heading": _number(plane, "true_heading", "mag_heading", "track", "dir"),
             "track": _number(plane, "track", "true_heading", "mag_heading", "dir"),
             "speed": _number(plane, "gs", "tas", "ias"),

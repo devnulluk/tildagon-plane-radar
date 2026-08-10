@@ -72,6 +72,8 @@ COMPASS_UPDATE_MS = 200
 NORMAL_SPLASH_MS = 3000
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
+TRAIL_POINTS = 7
+AIRCRAFT_LABEL_SIZE = 14
 LOCATION_NOTICE_MS = 4500
 COARSE_LOCATION_METRES = 5000
 KM_PER_MILE = 1.609344
@@ -146,6 +148,7 @@ class PlaneRadarApp(app.App):
         self.position_checked = False
         self.use_miles = bool(self.config.get("use_miles", False))
         self.aircraft = []
+        self.aircraft_trails = {}
         self.status = "Checking GPS..."
         self.poll_elapsed = POLL_INTERVAL_MS
         self.dialog = None
@@ -684,6 +687,7 @@ class PlaneRadarApp(app.App):
                 self.status = "ADS-B HTTP {}".format(status_code)
                 return
             self.aircraft = parse_aircraft(response.json())
+            self._update_aircraft_trails()
             self.status = "{} aircraft".format(len(self.aircraft))
             self.selected_item = None
         except Exception as exc:
@@ -695,6 +699,25 @@ class PlaneRadarApp(app.App):
                     response.close()
                 except Exception:
                     pass
+
+    def _aircraft_key(self, item):
+        return item.get("icao") or item.get("callsign")
+
+    def _update_aircraft_trails(self):
+        active = set()
+        for item in self.aircraft:
+            key = self._aircraft_key(item)
+            if not key:
+                continue
+            active.add(key)
+            points = self.aircraft_trails.get(key, [])
+            point = (item.get("lat"), item.get("lon"))
+            if not points or points[-1] != point:
+                points.append(point)
+            self.aircraft_trails[key] = points[-TRAIL_POINTS:]
+        for key in tuple(self.aircraft_trails):
+            if key not in active:
+                del self.aircraft_trails[key]
 
     def _handle_splash_input(self, delta):
         self.splash_elapsed += delta
@@ -937,6 +960,22 @@ class PlaneRadarApp(app.App):
             ctx.rgb(*RED).arc(x, y, 3.1, 0, 2 * math.pi, True).fill()
             return
 
+        trail = self.aircraft_trails.get(self._aircraft_key(item), [])
+        screen_trail = []
+        for trail_lat, trail_lon in trail:
+            trail_point = self._screen_point_for_aircraft(
+                {"lat": trail_lat, "lon": trail_lon}
+            )
+            if trail_point is not None and trail_point[2] <= self.outer_km:
+                screen_trail.append(trail_point[:2])
+        for index in range(1, len(screen_trail)):
+            alpha = 0.12 + (0.48 * index / max(1, len(screen_trail) - 1))
+            ctx.rgba(MAGENTA[0], MAGENTA[1], MAGENTA[2], alpha)
+            ctx.begin_path()
+            ctx.move_to(*screen_trail[index - 1])
+            ctx.line_to(*screen_trail[index])
+            ctx.stroke()
+
         display_heading = self._display_heading()
         speed = item.get("speed", 0.0) or 0.0
         vector_len = 6.0 + min(float(speed), 600.0) / 600.0 * 12.0
@@ -971,27 +1010,54 @@ class PlaneRadarApp(app.App):
             ctx.arc(x, y, 8, 0, 2 * math.pi, True).stroke()
             ctx.line_width = 1
 
-        label = item.get("callsign", "")
-        alt = item.get("alt", "")
-        if label:
-            ctx.font_size = 9
+        return x, y
+
+    def _draw_aircraft_labels(self, ctx, aircraft_points):
+        """Place large callsigns around aircraft with minimal overlap."""
+        occupied = []
+        ctx.font_size = AIRCRAFT_LABEL_SIZE
+        for item, x, y in aircraft_points:
+            label = item.get("callsign", "")
+            if not label:
+                continue
             width = ctx.text_width(label)
-            alt_width = 0
-            if alt:
-                ctx.font_size = 8
-                alt_width = ctx.text_width(alt)
-            block_width = max(width, alt_width)
-            tx = x + 9 if x < 0 else x - 9 - block_width
-            ty = y - (13 if y > 58 else 2)
-            ctx.rgba(0, 0, 0, 0.78).rectangle(
-                tx - 2, ty - 9, block_width + 4, 21 if alt else 12
+            height = AIRCRAFT_LABEL_SIZE + 2
+            candidates = (
+                (x + 10, y - 3),
+                (x - width - 10, y - 3),
+                (x - width / 2, y - 13),
+                (x - width / 2, y + 16),
+                (x + 10, y + 14),
+                (x - width - 10, y + 14),
+            )
+            chosen = candidates[0]
+            for tx, ty in candidates:
+                box = (tx - 2, ty - height + 3, tx + width + 2, ty + 3)
+                if max(abs(box[0]), abs(box[2])) > 104 or max(abs(box[1]), abs(box[3])) > 104:
+                    continue
+                if any(
+                    box[0] < old[2] and box[2] > old[0]
+                    and box[1] < old[3] and box[3] > old[1]
+                    for old in occupied
+                ):
+                    continue
+                chosen = (tx, ty)
+                break
+            tx, ty = chosen
+            box = (tx - 2, ty - height + 3, tx + width + 2, ty + 3)
+            occupied.append(box)
+
+            link_x = min(max(x, box[0]), box[2])
+            link_y = min(max(y, box[1]), box[3])
+            ctx.rgb(*WHITE).begin_path()
+            ctx.move_to(x, y).line_to(link_x, link_y).stroke()
+            ctx.rgba(0, 0, 0, 0.82).rectangle(
+                box[0], box[1], box[2] - box[0], box[3] - box[1]
             ).fill()
-            ctx.font_size = 9
-            ctx.rgb(*WHITE)
+            ctx.rgb(*WHITE).rectangle(
+                box[0], box[1], box[2] - box[0], box[3] - box[1]
+            ).stroke()
             ctx.move_to(tx, ty).text(label)
-            if alt:
-                ctx.font_size = 8
-                ctx.rgb(*YELLOW).move_to(tx, ty + 9).text(alt)
 
     def _distance_text(self, distance_km):
         if distance_km is None:
@@ -1239,8 +1305,12 @@ class PlaneRadarApp(app.App):
 
         self._draw_grid(ctx)
         if self.center_lat is not None and self.center_lon is not None:
+            aircraft_points = []
             for item in self.aircraft:
-                self._draw_aircraft(ctx, item)
+                point = self._draw_aircraft(ctx, item)
+                if point is not None:
+                    aircraft_points.append((item, point[0], point[1]))
+            self._draw_aircraft_labels(ctx, aircraft_points)
         self._draw_location_source(ctx)
         self._draw_selection(ctx)
         if self.status and self.location_notice is None:
