@@ -316,7 +316,7 @@ class PlaneRadarApp(app.App):
         if self.dialog is not None or self.setup_stage is None:
             return
         if self.setup_stage == "postcode":
-            prompt = "UK POSTCODE\n(e.g. CM7 1AA)"
+            prompt = "UK POSTCODE"
         elif self.setup_stage == "lat":
             prompt = "LATITUDE\n(e.g. 51.5074)"
         else:
@@ -830,14 +830,6 @@ class PlaneRadarApp(app.App):
         width = ctx.text_width(label)
         ctx.move_to(x - width / 2, y + 3).text(label)
 
-    def _draw_c_button_pointer(self, ctx):
-        """Point through the lower-right screen edge towards physical button C."""
-        ctx.rgb(*RED).begin_path()
-        ctx.move_to(108, 64)
-        ctx.line_to(87, 51)
-        ctx.line_to(91, 74)
-        ctx.close_path().fill()
-
     def _draw_grid(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
         ctx.line_width = 1
@@ -903,7 +895,8 @@ class PlaneRadarApp(app.App):
             x, y = rim_xy(east, north, RIM_RADIUS)
             if self.heading_up and self.compass_heading is not None:
                 x, y = rotate_screen_xy(x, y, self.compass_heading)
-            ctx.rgb(*RED).arc(x, y, 2.2, 0, 2 * math.pi, True).fill()
+            ctx.rgb(*BACKGROUND).arc(x, y, 4.2, 0, 2 * math.pi, True).fill()
+            ctx.rgb(*RED).arc(x, y, 3.1, 0, 2 * math.pi, True).fill()
             return
 
         display_heading = self._display_heading()
@@ -912,16 +905,19 @@ class PlaneRadarApp(app.App):
         vdx, vdy = heading_vector(
             relative_bearing(item.get("track", 0.0), display_heading), vector_len
         )
-        ctx.rgb(*MAGENTA).begin_path()
+        ctx.rgb(*MAGENTA)
+        ctx.line_width = 1.5
+        ctx.begin_path()
         ctx.move_to(x, y)
         ctx.line_to(x + vdx, y + vdy)
         ctx.stroke()
+        ctx.line_width = 1
 
         fdx, fdy = heading_vector(
-            relative_bearing(item.get("heading", 0.0), display_heading), 5.0
+            relative_bearing(item.get("heading", 0.0), display_heading), 7.0
         )
-        rdx = -fdy * 0.6
-        rdy = fdx * 0.6
+        rdx = -fdy * 0.7
+        rdy = fdx * 0.7
         bx = x - fdx * 0.8
         by = y - fdy * 0.8
         ctx.rgb(*RED).begin_path()
@@ -940,16 +936,24 @@ class PlaneRadarApp(app.App):
         label = item.get("callsign", "")
         alt = item.get("alt", "")
         if label:
-            ctx.font_size = 7
-            ctx.rgb(*WHITE)
+            ctx.font_size = 9
             width = ctx.text_width(label)
-            tx = x + 7 if x < 0 else x - 7 - width
-            ty = y - 1
+            alt_width = 0
+            if alt:
+                ctx.font_size = 8
+                alt_width = ctx.text_width(alt)
+            block_width = max(width, alt_width)
+            tx = x + 9 if x < 0 else x - 9 - block_width
+            ty = y - (13 if y > 58 else 2)
+            ctx.rgba(0, 0, 0, 0.78).rectangle(
+                tx - 2, ty - 9, block_width + 4, 21 if alt else 12
+            ).fill()
+            ctx.font_size = 9
+            ctx.rgb(*WHITE)
             ctx.move_to(tx, ty).text(label)
             if alt:
-                alt_width = ctx.text_width(alt)
-                ax = x + 7 if x < 0 else x - 7 - alt_width
-                ctx.rgb(*ALT_TEXT).move_to(ax, ty + 8).text(alt)
+                ctx.font_size = 8
+                ctx.rgb(*YELLOW).move_to(tx, ty + 9).text(alt)
 
     def _distance_text(self, distance_km):
         if distance_km is None:
@@ -1032,7 +1036,6 @@ class PlaneRadarApp(app.App):
             ctx.font_size = 8
             prompt = "Press C for instructions"
             ctx.rgb(*YELLOW).move_to(-ctx.text_width(prompt) / 2, 78).text(prompt)
-            self._draw_c_button_pointer(ctx)
         else:
             ctx.font_size = 10
             text = "Scanning the skies..."
@@ -1051,7 +1054,6 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 8
         hint = "PRESS C / BACK"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 92).text(hint)
-        self._draw_c_button_pointer(ctx)
 
     def _draw_location_setup(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1069,14 +1071,13 @@ class PlaneRadarApp(app.App):
         choice = options[self.location_choice]
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, -18).text(choice)
         ctx.font_size = 11
-        hint = "LEFT / RIGHT"
+        hint = "LEFT (E) / RIGHT (B)"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 30).text(hint)
         hint = "PRESS C TO SELECT"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 52).text(hint)
         ctx.font_size = 9
         hint = "BACK TO CANCEL"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 83).text(hint)
-        self._draw_c_button_pointer(ctx)
 
     def _draw_location_warning(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1090,7 +1091,7 @@ class PlaneRadarApp(app.App):
         detail = "ABOUT {}km".format(int(round((self.wifi_accuracy or 0) / 1000.0)))
         ctx.move_to(-ctx.text_width(detail) / 2, -35).text(detail)
         ctx.font_size = 11
-        hint = "LEFT / RIGHT"
+        hint = "LEFT (E) / RIGHT (B)"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 4).text(hint)
         ctx.font_size = 16
         choice = "CONTINUE" if self.location_warning_choice == 0 else "MANUAL"
@@ -1098,7 +1099,6 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 10
         hint = "PRESS C TO SELECT"
         ctx.rgb(*WHITE).move_to(-ctx.text_width(hint) / 2, 65).text(hint)
-        self._draw_c_button_pointer(ctx)
 
     def _draw_location_notice(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1114,7 +1114,6 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 9
         hint = "PRESS C TO CONTINUE"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 66).text(hint)
-        self._draw_c_button_pointer(ctx)
 
     def _draw_no_location(self, ctx):
         """Use the whole round-safe area while the radar cannot run."""
@@ -1138,7 +1137,6 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*ALT_TEXT)
         line = "DOWN: RETRY AUTO"
         ctx.move_to(-ctx.text_width(line) / 2, 63).text(line)
-        self._draw_c_button_pointer(ctx)
 
     def _status_lines(self, ctx, text, max_width=140):
         words = str(text).split()
