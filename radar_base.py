@@ -61,6 +61,7 @@ COMPASS_UPDATE_MS = 200
 NORMAL_SPLASH_MS = 1800
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
+LOCATION_NOTICE_MS = 4500
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
     "lat": None,
@@ -129,6 +130,9 @@ class PlaneRadarApp(app.App):
         self.setup_stage = None
         self.pending_lat = None
         self.location_choice = 0
+        self.location_notice = None
+        self.location_notice_detail = None
+        self.location_notice_elapsed = 0
 
         self.spaceagon = is_spaceagon()
         self.heading_up = bool(self.config.get("heading_up", False)) and self.spaceagon
@@ -283,6 +287,11 @@ class PlaneRadarApp(app.App):
         self.location_provider = None
         self.poll_elapsed = POLL_INTERVAL_MS
 
+    def _show_location_notice(self, title, detail):
+        self.location_notice = title
+        self.location_notice_detail = detail
+        self.location_notice_elapsed = 0
+
     def _open_setup_dialog_if_needed(self):
         if self.dialog is not None or self.setup_stage is None:
             return
@@ -310,6 +319,7 @@ class PlaneRadarApp(app.App):
             self.location_source = "gps"
             self.location_provider = provider_name
             self.status = "GPS lock" if startup else "GPS updated"
+            self._show_location_notice("GPS LOCATION", "READY")
             self.poll_elapsed = POLL_INTERVAL_MS
             return True
 
@@ -321,11 +331,15 @@ class PlaneRadarApp(app.App):
             self.location_source = "wifi"
             self.location_provider = "BeaconDB"
             self.status = "Wi-Fi ~{}m".format(int(round(accuracy)))
+            self._show_location_notice(
+                "WI-FI LOCATION", "ABOUT {}m".format(int(round(accuracy)))
+            )
             self.poll_elapsed = POLL_INTERVAL_MS
             return True
 
         if self.center_lat is not None and self.center_lon is not None:
             self.status = "Auto location failed - kept location"
+            self._show_location_notice("LOCATION KEPT", "AUTO FAILED")
             return False
 
         if self.manual_lat is not None and self.manual_lon is not None:
@@ -334,12 +348,14 @@ class PlaneRadarApp(app.App):
             self.location_source = "manual"
             self.location_provider = None
             self.status = "Using manual location"
+            self._show_location_notice("MANUAL LOCATION", "AUTO FAILED")
             self.poll_elapsed = POLL_INTERVAL_MS
             return False
 
         self.location_source = "none"
         self.location_provider = None
         self.status = "No auto location - OK manual"
+        self._show_location_notice("NO LOCATION", "PRESS OK FOR MANUAL")
         return False
 
     def _handle_spaceagon_down(self, event):
@@ -659,10 +675,6 @@ class PlaneRadarApp(app.App):
         if not self.leds_active:
             self._acquire_leds()
 
-        if not self.position_checked:
-            self.position_checked = True
-            self._refresh_position(startup=True)
-
         self.led_elapsed += delta
         if self.led_elapsed >= LED_UPDATE_MS:
             self.led_elapsed = 0
@@ -684,6 +696,23 @@ class PlaneRadarApp(app.App):
         if self.view == "location_setup":
             self._handle_location_setup_input()
             return
+
+        # Let the splash render first, then wait for Wi-Fi and run the complete
+        # GPS -> Wi-Fi -> manual startup sequence exactly once.
+        if not self.position_checked:
+            self.position_checked = True
+            self._refresh_position(startup=True)
+
+        if self.location_notice is not None:
+            self.location_notice_elapsed += delta
+            if (
+                self.location_notice_elapsed >= LOCATION_NOTICE_MS
+                or self.button_states.get(BUTTON_TYPES["CONFIRM"])
+                or self.button_states.get(BUTTON_TYPES["CANCEL"])
+            ):
+                self.location_notice = None
+                self.location_notice_detail = None
+                self.button_states.clear()
 
         self._open_setup_dialog_if_needed()
         if self.dialog is not None:
@@ -971,6 +1000,21 @@ class PlaneRadarApp(app.App):
         hint = "BACK TO CANCEL"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 83).text(hint)
 
+    def _draw_location_notice(self, ctx):
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.rgb(*GRID).arc(0, 0, 82, 0, 2 * math.pi, True).stroke()
+        ctx.font_size = 18
+        ctx.rgb(*WHITE)
+        title = self.location_notice or "LOCATION"
+        ctx.move_to(-ctx.text_width(title) / 2, -19).text(title)
+        ctx.font_size = 13
+        ctx.rgb(*GPS_TEXT)
+        detail = self.location_notice_detail or ""
+        ctx.move_to(-ctx.text_width(detail) / 2, 15).text(detail)
+        ctx.font_size = 9
+        hint = "OK TO CONTINUE"
+        ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 66).text(hint)
+
     def draw(self, ctx):
         ctx.save()
         if self.view == "splash":
@@ -992,7 +1036,9 @@ class PlaneRadarApp(app.App):
                 self._draw_aircraft(ctx, item)
         self._draw_location_source(ctx)
         self._draw_selection(ctx)
-        if self.status:
+        if self.location_notice is not None:
+            self._draw_location_notice(ctx)
+        if self.status and self.location_notice is None:
             ctx.font_size = 8
             ctx.rgb(*YELLOW)
             width = ctx.text_width(self.status)

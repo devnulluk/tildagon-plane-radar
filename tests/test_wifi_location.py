@@ -41,7 +41,11 @@ class WiFiLocationTests(unittest.TestCase):
             WLAN=lambda unused: station,
         )
         original_network = sys.modules.get("network")
+        original_system = sys.modules.get("system")
         sys.modules["network"] = fake_network
+        fake_system = types.ModuleType("system")
+        fake_system.wifi = types.SimpleNamespace(wait=lambda: True)
+        sys.modules["system"] = fake_system
         try:
             failing_requests = types.SimpleNamespace(
                 post=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("down"))
@@ -52,3 +56,7 @@ class WiFiLocationTests(unittest.TestCase):
                 del sys.modules["network"]
             else:
                 sys.modules["network"] = original_network
+            if original_system is None:
+                del sys.modules["system"]
+            else:
+                sys.modules["system"] = original_system

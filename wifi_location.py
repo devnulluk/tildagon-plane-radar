@@ -57,6 +57,11 @@ def get_wifi_position(requests_module, timeout=6):
     response = None
     try:
         import network
+        from system import wifi
+
+        # Startup may reach us before Tildagon has finished reconnecting.
+        if not wifi.wait():
+            return None
 
         station_id = getattr(network, "STA_IF", None)
         if station_id is None:
