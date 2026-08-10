@@ -1,10 +1,17 @@
 """ADS-B.fi API helpers shared by the Tildagon Plane Radar app."""
 API_BASE = "https://opendata.adsb.fi/api/v3/lat/{lat:.6f}/lon/{lon:.6f}/dist/{dist:.1f}"
+SQUAWK_BASE = "https://opendata.adsb.fi/api/v2/sqk/{squawk}"
 KM_PER_NM = 1.852
 MAX_AIRCRAFT = 64
 
 def build_url(lat, lon, radius_km):
     return API_BASE.format(lat=float(lat), lon=float(lon), dist=float(radius_km) / KM_PER_NM)
+
+def build_squawk_url(squawk):
+    value = str(squawk).strip()
+    if len(value) != 4 or any(char not in "01234567" for char in value):
+        raise ValueError("squawk must be four octal digits")
+    return SQUAWK_BASE.format(squawk=value)
 
 def _number(item, *keys):
     for key in keys:
@@ -40,6 +47,8 @@ def parse_aircraft(payload, show_ground=False, max_aircraft=MAX_AIRCRAFT):
         result.append({
             "lat": float(lat), "lon": float(lon),
             "icao": _trim(plane.get("hex")),
+            "squawk": _trim(plane.get("squawk"))[:4],
+            "emergency": _trim(plane.get("emergency"), "none").lower(),
             "heading": _number(plane, "true_heading", "mag_heading", "track", "dir"),
             "track": _number(plane, "track", "true_heading", "mag_heading", "dir"),
             "speed": _number(plane, "gs", "tas", "ias"),

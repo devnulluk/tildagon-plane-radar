@@ -1,6 +1,8 @@
 """Plane Radar entry point with optional flight-follow and Keepdexpansion features."""
 
+import random
 import requests
+import time
 from app_components import TextDialog
 from events.input import BUTTON_TYPES, ButtonDownEvent
 from system.eventbus import eventbus
@@ -19,6 +21,7 @@ try:
         route_remaining_km,
     )
     from .keebdeck import KeebDeckLights
+    from .adsb import build_squawk_url
 except ImportError:
     import radar_base as base
     from flight_follow import (
@@ -32,11 +35,14 @@ except ImportError:
         route_remaining_km,
     )
     from keebdeck import KeebDeckLights
+    from adsb import build_squawk_url
 
 FOLLOW_PAGE_MS = 5000
 FOLLOW_TARGET_FIRST_MS = 2500
 FOLLOW_TARGET_MS = 5000
 FOLLOW_ROUTE_DELAY_MS = 1400
+EMERGENCY_SCAN_MS = 30000
+EMERGENCY_CODES = ("7500", "7600", "7700")
 
 
 class PlaneRadarApp(base.PlaneRadarApp):
@@ -65,6 +71,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.keyboard_confirm_pending = False
         self.pending_manual_open = False
         self.pending_location_submit = False
+        self.emergency_code = None
+        self.emergency_simulated = False
+        self.emergency_scan_elapsed = 0
         self.keeb_lights = KeebDeckLights(self)
         self._keyboard_handler = self._handle_keyboard_down
         eventbus.on(ButtonDownEvent, self._keyboard_handler, self)
@@ -127,6 +136,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if not query:
             self.status = "No flight entered"
             return
+        if query == "7700":
+            self._simulate_emergency()
+            return
         self.pending_follow_query = query
 
     def _cancel_flight_dialog(self):
@@ -160,17 +172,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
                 except Exception:
                     pass
 
-    def _start_follow(self, query):
-        query = normalise_flight_query(query)
-        if not query:
-            return False
-        self.status = "Finding " + query + "..."
-        payload = self._get_json(build_target_url(callsign=query))
-        target = parse_target(payload)
-        if target is None:
-            self.status = "Flight not found: " + query
-            return False
-
+    def _begin_follow_target(self, target, query, emergency_code=None, simulated=False):
         if self.follow_home is None:
             self.follow_home = (
                 self.center_lat,
@@ -186,11 +188,11 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.follow_remaining_km = None
         self.follow_locked = True
         self.follow_lost_count = 0
-        self.follow_page = "radar"
+        self.follow_page = "data" if emergency_code else "radar"
         self.follow_page_elapsed = 0
         self.follow_target_elapsed = 0
         self.follow_target_staggered = False
-        self.follow_route_pending = True
+        self.follow_route_pending = not bool(emergency_code)
         self.follow_route_elapsed = 0
         self.center_lat = target["lat"]
         self.center_lon = target["lon"]
@@ -199,10 +201,65 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.poll_elapsed = 0
         self.aircraft = []
         self.selected_item = None
+        self.emergency_code = emergency_code
+        self.emergency_simulated = bool(simulated)
         self.keeb_lights.acquire()
-        self.keeb_lights.paint(progress=None, locked=True, pulse=True)
-        self.status = "Following " + self.follow_query
+        if emergency_code:
+            self.status = "EMERGENCY " + emergency_code
+        else:
+            self.keeb_lights.paint(progress=None, locked=True, pulse=True)
+            self.status = "Following " + self.follow_query
         return True
+
+    def _start_follow(self, query):
+        query = normalise_flight_query(query)
+        if not query:
+            return False
+        self.status = "Finding " + query + "..."
+        payload = self._get_json(build_target_url(callsign=query))
+        target = parse_target(payload)
+        if target is None:
+            self.status = "Flight not found: " + query
+            return False
+        return self._begin_follow_target(target, query)
+
+    def _target_from_radar_item(self, item, squawk=None):
+        return {
+            "hex": item.get("icao", ""),
+            "callsign": item.get("callsign") or item.get("icao") or "?",
+            "lat": item["lat"],
+            "lon": item["lon"],
+            "heading": item.get("heading", 0.0),
+            "track": item.get("track", 0.0),
+            "speed": item.get("speed", 0.0),
+            "alt": item.get("alt", ""),
+            "alt_ft": None,
+            "type": item.get("type", ""),
+            "registration": "",
+            "squawk": squawk or item.get("squawk", ""),
+            "vertical_rate": None,
+            "seen": 0.0,
+        }
+
+    def _simulate_emergency(self):
+        candidates = [item for item in self.aircraft if item.get("lat") is not None]
+        if not candidates:
+            self.status = "No aircraft available for 7700 test"
+            return False
+        item = candidates[int(random.random() * len(candidates))]
+        target = self._target_from_radar_item(item, "7700")
+        return self._begin_follow_target(
+            target, target["callsign"], emergency_code="7700", simulated=True
+        )
+
+    def _scan_global_emergency(self):
+        self.emergency_scan_elapsed = 0
+        target = parse_target(self._get_json(build_squawk_url("7700")))
+        if target is None:
+            return False
+        return self._begin_follow_target(
+            target, target.get("callsign") or "7700", emergency_code="7700"
+        )
 
     def _stop_follow(self):
         if not self.following:
@@ -221,6 +278,8 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.follow_progress = None
         self.follow_remaining_km = None
         self.follow_locked = False
+        self.emergency_code = None
+        self.emergency_simulated = False
         self.follow_route_pending = False
         self.follow_page = "radar"
         self.follow_page_elapsed = 0
@@ -294,7 +353,19 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
     def _fetch_aircraft(self):
         if not self.following:
-            return super()._fetch_aircraft()
+            super()._fetch_aircraft()
+            for item in self.aircraft:
+                squawk = item.get("squawk", "")
+                emergency = item.get("emergency", "none")
+                if squawk in EMERGENCY_CODES or emergency not in ("", "none"):
+                    target = self._target_from_radar_item(item, squawk)
+                    self._begin_follow_target(
+                        target,
+                        target["callsign"],
+                        emergency_code=squawk or "ADS-B",
+                    )
+                    break
+            return
         super()._fetch_aircraft()
         target_callsign = (self.follow_query or "").upper()
         self.aircraft = [
@@ -302,6 +373,10 @@ class PlaneRadarApp(base.PlaneRadarApp):
             for item in self.aircraft
             if str(item.get("callsign", "")).upper() != target_callsign
         ]
+        if self.emergency_code:
+            self.aircraft = []
+            self.status = "EMERGENCY " + self.emergency_code
+            return
         if self.follow_locked:
             self.status = "{} + {} nearby".format(
                 self.follow_query, len(self.aircraft)
@@ -381,6 +456,15 @@ class PlaneRadarApp(base.PlaneRadarApp):
         return False
 
     def update(self, delta):
+        if not self.following and self.view == "radar" and self.dialog is None:
+            self.emergency_scan_elapsed += delta
+            # Scan midway between local polls, avoiding back-to-back requests.
+            if (
+                self.emergency_scan_elapsed >= EMERGENCY_SCAN_MS
+                and 1500 <= self.poll_elapsed <= 3500
+            ):
+                self._scan_global_emergency()
+
         if self.pending_flight_cancel or (
             self.dialog is not None
             and self.setup_stage is None
@@ -477,16 +561,21 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
     def _draw_follow_data(self, ctx):
         target = self.follow_target
+        emergency = bool(self.emergency_code)
         ctx.rgb(*base.BACKGROUND).rectangle(-120, -120, 240, 240).fill()
         ctx.font_size = 8
-        ctx.rgb(*base.CYAN)
-        header = "FOLLOWING"
-        ctx.move_to(-ctx.text_width(header) / 2, -108).text(header)
+        ctx.rgb(*(base.RED if emergency else base.CYAN))
+        if emergency:
+            prefix = "SIMULATED " if self.emergency_simulated else ""
+            header = prefix + "EMERGENCY " + self.emergency_code
+        else:
+            header = "FOLLOWING"
+        ctx.move_to(-ctx.text_width(header) / 2, -99).text(header)
 
         ctx.font_size = 17
         ctx.rgb(*(base.WHITE if self.follow_locked else base.RED))
         callsign = self.follow_query or "?"
-        ctx.move_to(-ctx.text_width(callsign) / 2, -91).text(callsign)
+        ctx.move_to(-ctx.text_width(callsign) / 2, -80).text(callsign)
 
         ctx.font_size = 8
         ctx.rgb(*base.ALT_TEXT)
@@ -495,7 +584,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
             for x in (target.get("type", ""), target.get("registration", ""))
             if x
         ) or (target.get("hex", "") or "aircraft")
-        ctx.move_to(-ctx.text_width(identity) / 2, -69).text(identity)
+        ctx.move_to(-ctx.text_width(identity) / 2, -61).text(identity)
 
         alt_ft = target.get("alt_ft")
         alt_text = "?"
@@ -520,7 +609,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
         route = self.follow_route
         ctx.font_size = 12
         ctx.rgb(*base.YELLOW)
-        if route is not None:
+        if emergency:
+            route_text = "FOCUS MODE"
+        elif route is not None:
             route_text = "{} > {}".format(route["origin"], route["destination"])
         else:
             route_text = "ROUTE UNKNOWN"
@@ -608,6 +699,21 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if not self.following:
             self.keeb_lights.release()
             return super()._update_radar_leds()
+
+        if self.emergency_code:
+            # A smooth 2.4-second breathing pulse: never off, never flashing.
+            phase = int(time.ticks_ms() % 2400)
+            distance = abs(phase - 1200)
+            level = 18 + int((1200 - distance) * 62 / 1200)
+            frame = [(level, 0, 0)] * 12
+            self.keeb_lights._write(frame)
+            try:
+                for led, colour in enumerate(frame, 1):
+                    tildagonos.leds[led] = colour
+                tildagonos.leds.write()
+            except Exception as exc:
+                print("plane-radar: emergency LED pulse failed:", exc)
+            return
 
         pulse = (self.sweep_led % 2) == 0
         self.keeb_lights.paint(

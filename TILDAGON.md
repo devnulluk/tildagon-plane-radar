@@ -24,6 +24,21 @@ Startup and manual refresh results temporarily take over the display in large te
 
 Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
+## Emergency focus
+
+The local radar watches the ADS-B emergency status and the standard 7500,
+7600 and 7700 squawks. It also checks adsb.fi's dedicated 7700 endpoint every
+30 seconds, allowing general-emergency aircraft to be detected well beyond the
+local radar radius without downloading country-wide traffic. When detected,
+Plane Radar switches to a single-aircraft focus view and uses a slow, smooth
+red LED breathing pulse rather than a flash. Press Back to return to the local
+radar.
+
+For demonstration and testing, type **7700** as a flight/callsign. Plane Radar
+chooses one of the currently visible aircraft, clearly labels the alert as
+simulated, and exercises the same focus screen and LED pulse. This display is
+for interest only and must not be treated as an authoritative emergency alert.
+
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
 Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode and coordinate fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
