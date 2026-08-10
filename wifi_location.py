@@ -75,25 +75,40 @@ def get_wifi_position(requests_module, timeout=6):
     response = None
     try:
         import network
-        try:
-            import wifi
-
-            if not wifi.status():
-                print("plane-radar: connecting Wi-Fi for location")
-                wifi.connect()
-                if not wifi.wait():
-                    print("plane-radar: Wi-Fi connection unavailable")
-                    return None
-        except ImportError:
-            wifi = None
-
         station_id = getattr(network, "STA_IF", None)
         if station_id is None:
             station_id = network.WLAN.IF_STA
         station = network.WLAN(station_id)
-        if wifi is None and not wait_for_connection(station):
-            print("plane-radar: WLAN station did not connect")
-            return None
+        try:
+            connected = bool(station.isconnected())
+        except Exception:
+            connected = False
+
+        try:
+            import wifi
+
+            if not connected:
+                try:
+                    connected = bool(wifi.status())
+                except Exception as exc:
+                    print("plane-radar: Wi-Fi status unavailable:", exc)
+            if not connected:
+                print("plane-radar: connecting Wi-Fi for location")
+                try:
+                    wifi.connect()
+                    connected = bool(wifi.wait())
+                except Exception as exc:
+                    # ESP-NOW can reject an explicit connection operation even
+                    # while normal IP traffic remains usable. Do not abort the
+                    # BeaconDB request solely because of that firmware state.
+                    print("plane-radar: Wi-Fi connect deferred:", exc)
+        except ImportError:
+            wifi = None
+
+        if wifi is None and not connected:
+            connected = wait_for_connection(station)
+        if not connected:
+            print("plane-radar: connection unconfirmed; trying BeaconDB anyway")
         try:
             scan_results = station.scan()
         except Exception as exc:
