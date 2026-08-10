@@ -754,10 +754,16 @@ class PlaneRadarApp(app.App):
             self._finish_splash()
 
     def _handle_location_setup_input(self):
-        if self.button_states.get(BUTTON_TYPES["LEFT"]):
+        if (
+            self.button_states.get(BUTTON_TYPES["LEFT"])
+            or self.button_states.get(BUTTON_TYPES["UP"])
+        ):
             self.location_choice = (self.location_choice - 1) % 4
             self.button_states.clear()
-        elif self.button_states.get(BUTTON_TYPES["RIGHT"]):
+        elif (
+            self.button_states.get(BUTTON_TYPES["RIGHT"])
+            or self.button_states.get(BUTTON_TYPES["DOWN"])
+        ):
             self.location_choice = (self.location_choice + 1) % 4
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
@@ -805,10 +811,16 @@ class PlaneRadarApp(app.App):
             return
 
         if self.location_warning:
-            if self.button_states.get(BUTTON_TYPES["LEFT"]):
+            if (
+                self.button_states.get(BUTTON_TYPES["LEFT"])
+                or self.button_states.get(BUTTON_TYPES["UP"])
+            ):
                 self.location_warning_choice = 0
                 self.button_states.clear()
-            elif self.button_states.get(BUTTON_TYPES["RIGHT"]):
+            elif (
+                self.button_states.get(BUTTON_TYPES["RIGHT"])
+                or self.button_states.get(BUTTON_TYPES["DOWN"])
+            ):
                 self.location_warning_choice = 1
                 self.button_states.clear()
             elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
@@ -1186,7 +1198,7 @@ class PlaneRadarApp(app.App):
         choice = options[self.location_choice]
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, -18).text(choice)
         ctx.font_size = 11
-        hint = "LEFT (E) / RIGHT (B)"
+        hint = "JOYSTICK / ARROWS"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 30).text(hint)
         hint = "PRESS C TO SELECT"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 52).text(hint)
