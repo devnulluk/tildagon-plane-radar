@@ -79,6 +79,14 @@ class RouteProgressTests(unittest.TestCase):
         self.assertEqual(self.route["origin"], "LHR")
         self.assertEqual(self.route["destination"], "JFK")
 
+    def test_adsbdb_route_shape(self):
+        route = parse_route({"response": {"flightroute": {
+            "origin": {"iata_code": "YVR", "latitude": 49.19, "longitude": -123.18},
+            "destination": {"iata_code": "LHR", "latitude": 51.47, "longitude": -0.46},
+        }}})
+        self.assertEqual(route["origin"], "YVR")
+        self.assertEqual(route["destination"], "LHR")
+
     def test_progress_is_zero_at_origin_and_one_at_destination(self):
         self.assertAlmostEqual(route_progress(self.route, 51.4700, -0.4543), 0.0)
         self.assertAlmostEqual(route_progress(self.route, 40.6413, -73.7781), 1.0)

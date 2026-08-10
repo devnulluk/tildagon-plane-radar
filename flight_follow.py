@@ -3,7 +3,7 @@ import math
 
 ADSB_CALLSIGN_URL = "https://opendata.adsb.fi/api/v2/callsign/{callsign}"
 ADSB_HEX_URL = "https://opendata.adsb.fi/api/v2/hex/{hex_id}"
-ROUTE_URL = "https://api.adsb.lol/api/0/route/{callsign}/{lat:.4f}/{lon:.4f}"
+ROUTE_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
 EARTH_RADIUS_KM = 6371.0088
 
 # Useful passenger-facing IATA prefixes whose ADS-B callsigns normally use a
@@ -48,9 +48,7 @@ def build_target_url(callsign=None, hex_id=None):
 
 
 def build_route_url(callsign, lat, lon):
-    return ROUTE_URL.format(
-        callsign=normalise_flight_query(callsign), lat=float(lat), lon=float(lon)
-    )
+    return ROUTE_URL.format(callsign=normalise_flight_query(callsign))
 
 
 def _number(item, *keys):
@@ -184,6 +182,32 @@ def parse_route(payload):
         payload = payload[0] if payload else None
     if not isinstance(payload, dict):
         return None
+    response = payload.get("response")
+    if isinstance(response, dict):
+        route = response.get("flightroute")
+        if not isinstance(route, dict):
+            return None
+        origin = route.get("origin")
+        destination = route.get("destination")
+        if not isinstance(origin, dict) or not isinstance(destination, dict):
+            return None
+
+        def airport_code(airport):
+            value = airport.get("iata_code") or airport.get("icao_code")
+            return value.strip().upper() if isinstance(value, str) else "?"
+
+        try:
+            return {
+                "origin": airport_code(origin),
+                "destination": airport_code(destination),
+                "origin_lat": float(origin["latitude"]),
+                "origin_lon": float(origin["longitude"]),
+                "destination_lat": float(destination["latitude"]),
+                "destination_lon": float(destination["longitude"]),
+                "plausible": True,
+            }
+        except (KeyError, TypeError, ValueError):
+            return None
     airports = payload.get("_airports")
     if not isinstance(airports, list) or len(airports) < 2:
         return None

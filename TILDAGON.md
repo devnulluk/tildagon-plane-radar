@@ -150,7 +150,7 @@ For example:
 - **Touch 6** inspects traffic below;
 - **Touch 9** inspects traffic to the left.
 
-A selected aircraft is highlighted and a temporary detail card shows its callsign/type, altitude, distance and groundspeed.
+A selected aircraft is highlighted and a temporary detail card shows its callsign/type, altitude, distance and groundspeed. Radar labels alternate between the callsign and resolved origin-destination code (for example `BAW88C` and `YVR-LHR`). When only one aircraft is inside the radar range, its expanded label shows both lines together. Route lookups are progressive and cached only for the current app session.
 
 When heading-up mode is active the touch sectors rotate with the radar, so you still touch the physical direction in which the aircraft appears.
 
@@ -181,7 +181,7 @@ A short Fire press then toggles heading-up on/off while preserving the calibrati
 
 ## Display behaviour
 
-The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, callsign and altitude labels, heading triangles, track/speed vectors and off-scale direction dots.
+The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, heading triangles, track/speed vectors and off-scale direction dots. Large colour-matched labels show callsigns and available route codes, while brighter fading trails retain up to ten recent positions and survive short gaps in the live feed.
 
 When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
 
@@ -225,6 +225,8 @@ The Tildagon port was adapted by **Mark Brown**, with design, implementation,
 testing and documentation assistance from **OpenAI Codex**. AI assistance does
 not replace or diminish the original project's authorship or licence.
 
-Live aircraft data comes from adsb.fi. Follow Flight additionally uses
-adsb.lol/VRS standing route data when available to resolve origin and
-destination metadata. Location lookups may use BeaconDB and Postcodes.io.
+Live aircraft data comes from adsb.fi. Route labels and Follow Flight use
+adsbdb.com when available to resolve origin and destination metadata. Route
+results are kept only in a small temporary session cache for display; they are
+not republished or incorporated into a database. Location lookups may use
+BeaconDB and Postcodes.io.

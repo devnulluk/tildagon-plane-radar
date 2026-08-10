@@ -35,6 +35,7 @@ try:
         postcode_coordinates,
     )
     from .wifi_location import get_wifi_position
+    from .route_lookup import build_route_lookup_url, parse_route_label
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
@@ -59,6 +60,7 @@ except ImportError:
         postcode_coordinates,
     )
     from wifi_location import get_wifi_position
+    from route_lookup import build_route_lookup_url, parse_route_label
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -72,7 +74,7 @@ COMPASS_UPDATE_MS = 200
 NORMAL_SPLASH_MS = 3000
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
-TRAIL_POINTS = 7
+TRAIL_POINTS = 10
 AIRCRAFT_LABEL_SIZE = 14
 LOCATION_NOTICE_MS = 4500
 COARSE_LOCATION_METRES = 5000
@@ -156,6 +158,9 @@ class PlaneRadarApp(app.App):
         self.use_miles = bool(self.config.get("use_miles", False))
         self.aircraft = []
         self.aircraft_trails = {}
+        self.aircraft_trail_misses = {}
+        self.route_cache = {}
+        self.label_elapsed = 0
         self.status = "Checking GPS..."
         self.poll_elapsed = POLL_INTERVAL_MS
         self.dialog = None
@@ -726,6 +731,49 @@ class PlaneRadarApp(app.App):
                     response.close()
                 except Exception:
                     pass
+        self._lookup_one_route()
+
+    def _lookup_one_route(self):
+        """Progressively fill a small, session-only route-label cache."""
+        if getattr(self, "following", False):
+            return
+        if len(self.route_cache) >= 64:
+            self.route_cache = {}
+        candidate = None
+        for item in self.aircraft:
+            callsign = item.get("callsign", "")
+            if (
+                not callsign
+                or callsign == item.get("icao")
+                or callsign in self.route_cache
+            ):
+                continue
+            point = self._screen_point_for_aircraft(item)
+            if point is not None and point[2] <= self.outer_km:
+                candidate = item
+                break
+        if candidate is None:
+            return
+
+        callsign = candidate["callsign"]
+        response = None
+        try:
+            response = requests.get(build_route_lookup_url(callsign))
+            status_code = getattr(response, "status_code", 200)
+            if status_code == 200:
+                self.route_cache[callsign] = parse_route_label(response.json()) or ""
+            elif status_code == 404:
+                self.route_cache[callsign] = ""
+            else:
+                print("plane-radar: route HTTP", status_code)
+        except Exception as exc:
+            print("plane-radar: route lookup failed:", exc)
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
     def _aircraft_key(self, item):
         return item.get("icao") or item.get("callsign")
@@ -742,6 +790,7 @@ class PlaneRadarApp(app.App):
             if not key:
                 continue
             active.add(key)
+            self.aircraft_trail_misses[key] = 0
             points = self.aircraft_trails.get(key, [])
             point = (item.get("lat"), item.get("lon"))
             if not points or points[-1] != point:
@@ -749,7 +798,11 @@ class PlaneRadarApp(app.App):
             self.aircraft_trails[key] = points[-TRAIL_POINTS:]
         for key in tuple(self.aircraft_trails):
             if key not in active:
-                del self.aircraft_trails[key]
+                misses = self.aircraft_trail_misses.get(key, 0) + 1
+                self.aircraft_trail_misses[key] = misses
+                if misses > 3:
+                    del self.aircraft_trails[key]
+                    del self.aircraft_trail_misses[key]
 
     def _handle_splash_input(self, delta):
         self.splash_elapsed += delta
@@ -805,6 +858,7 @@ class PlaneRadarApp(app.App):
             self.view = "radar"
 
     def update(self, delta):
+        self.label_elapsed = (self.label_elapsed + delta) % 6000
         if not self.leds_active:
             self._acquire_leds()
 
@@ -1023,12 +1077,27 @@ class PlaneRadarApp(app.App):
             if trail_point is not None and trail_point[2] <= self.outer_km:
                 screen_trail.append(trail_point[:2])
         for index in range(1, len(screen_trail)):
-            alpha = 0.12 + (0.48 * index / max(1, len(screen_trail) - 1))
-            ctx.rgba(colour[0], colour[1], colour[2], alpha)
+            strength = 0.22 + (0.68 * index / max(1, len(screen_trail) - 1))
+            trail_colour = (
+                colour[0] * strength,
+                colour[1] * strength,
+                colour[2] * strength,
+            )
+            ctx.rgb(*trail_colour)
+            ctx.line_width = 1.4
             ctx.begin_path()
             ctx.move_to(*screen_trail[index - 1])
             ctx.line_to(*screen_trail[index])
             ctx.stroke()
+            ctx.arc(
+                screen_trail[index - 1][0],
+                screen_trail[index - 1][1],
+                1.15,
+                0,
+                2 * math.pi,
+                True,
+            ).fill()
+        ctx.line_width = 1
 
         display_heading = self._display_heading()
         speed = item.get("speed", 0.0) or 0.0
@@ -1070,12 +1139,21 @@ class PlaneRadarApp(app.App):
         """Place large callsigns around aircraft with minimal overlap."""
         occupied = []
         ctx.font_size = AIRCRAFT_LABEL_SIZE
+        show_both = len(aircraft_points) == 1
+        show_routes = int(self.label_elapsed / 3000) % 2 == 1
         for item, x, y, colour in aircraft_points:
-            label = item.get("callsign", "")
-            if not label:
+            callsign = item.get("callsign", "")
+            route = self.route_cache.get(callsign, "")
+            if not callsign:
                 continue
-            width = ctx.text_width(label)
-            height = AIRCRAFT_LABEL_SIZE + 2
+            lines = [callsign]
+            if route and show_both:
+                lines.append(route)
+            elif route and show_routes:
+                lines[0] = route
+            widths = [ctx.text_width(line) for line in lines]
+            width = max(widths)
+            line_extra = 14 * (len(lines) - 1)
             candidates = (
                 (x + 10, y - 3),
                 (x - width - 10, y - 3),
@@ -1086,7 +1164,12 @@ class PlaneRadarApp(app.App):
             )
             chosen = candidates[0]
             for tx, ty in candidates:
-                box = (tx - 2, ty - height + 3, tx + width + 2, ty + 3)
+                box = (
+                    tx - 2,
+                    ty - AIRCRAFT_LABEL_SIZE + 3,
+                    tx + width + 2,
+                    ty + 3 + line_extra,
+                )
                 if max(abs(box[0]), abs(box[2])) > 104 or max(abs(box[1]), abs(box[3])) > 104:
                     continue
                 if any(
@@ -1098,7 +1181,12 @@ class PlaneRadarApp(app.App):
                 chosen = (tx, ty)
                 break
             tx, ty = chosen
-            box = (tx - 2, ty - height + 3, tx + width + 2, ty + 3)
+            box = (
+                tx - 2,
+                ty - AIRCRAFT_LABEL_SIZE + 3,
+                tx + width + 2,
+                ty + 3 + line_extra,
+            )
             occupied.append(box)
 
             link_x = min(max(x, box[0]), box[2])
@@ -1112,7 +1200,9 @@ class PlaneRadarApp(app.App):
                 box[0], box[1], box[2] - box[0], box[3] - box[1]
             ).stroke()
             ctx.rgb(*colour)
-            ctx.move_to(tx, ty).text(label)
+            for line_index, line in enumerate(lines):
+                line_x = tx + (width - widths[line_index]) / 2
+                ctx.move_to(line_x, ty + line_index * 14).text(line)
 
     def _distance_text(self, distance_km):
         if distance_km is None:
