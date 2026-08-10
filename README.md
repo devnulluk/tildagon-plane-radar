@@ -23,7 +23,13 @@ Plane Radar is a fun visualisation, not an authoritative air-traffic or emergenc
 
 ## Install
 
-Once listed, install **Plane Radar** from the Tildagon App Store on the badge. Tildagon manages the app files and future updates.
+Open **App Store** on the badge, choose **CodeInstall**, and enter:
+
+```text
+03224321
+```
+
+See the permanent [Plane Radar App Store page](https://apps.badge.emfcamp.org/apps/03224321) for the button sequence and web emulator. Tildagon manages the installed files and future updates.
 
 For development or hardware testing, copy all of the root Python files plus `tildagon.toml` into `/apps/plane_radar/` with `mpremote`, then reset the badge. The detailed manual includes simulator instructions and troubleshooting.
 
