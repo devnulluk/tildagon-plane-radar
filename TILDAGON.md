@@ -6,9 +6,9 @@ Plane Radar shows live nearby aircraft from adsb.fi on the badge's round display
 
 ## First start
 
-The first launch opens with an animated radar boot screen and an on-badge QR code. Scan it to return to these instructions, or press **C** while the splash is visible for a larger QR help screen.
+Plane Radar opens with an animated radar boot screen. Press **C** while the splash is visible to open the full QR manual screen.
 
-The first-run splash remains visible for a few seconds so there is time to scan it. Later launches use a shorter animated splash.
+The first-run splash remains visible for five seconds; later launches remain visible for three seconds so there is time to open the manual.
 
 ## Location
 

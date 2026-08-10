@@ -69,7 +69,7 @@ RANGE_PROFILE = 2
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
 COMPASS_UPDATE_MS = 200
-NORMAL_SPLASH_MS = 1800
+NORMAL_SPLASH_MS = 3000
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
 LOCATION_NOTICE_MS = 4500
@@ -1046,20 +1046,17 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 18
         ctx.rgb(*WHITE)
         title = "PLANE RADAR"
-        ctx.move_to(-ctx.text_width(title) / 2, -104).text(title)
-        ctx.font_size = 8
+        ctx.move_to(-ctx.text_width(title) / 2, -77).text(title)
+        ctx.font_size = 10
         subtitle = "LIVE ADS-B / TILDAGON"
-        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(subtitle) / 2, -84).text(subtitle)
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(subtitle) / 2, -55).text(subtitle)
 
-        if self.first_run:
-            draw_qr(ctx, 0, 23, 2)
-            ctx.font_size = 8
-            prompt = "Press C for instructions"
-            ctx.rgb(*YELLOW).move_to(-ctx.text_width(prompt) / 2, 78).text(prompt)
-        else:
-            ctx.font_size = 10
-            text = "Scanning the skies..."
-            ctx.rgb(*YELLOW).move_to(-ctx.text_width(text) / 2, 12).text(text)
+        ctx.font_size = 14
+        text = "Scanning the skies..."
+        ctx.rgb(*YELLOW).move_to(-ctx.text_width(text) / 2, 13).text(text)
+        ctx.font_size = 10
+        prompt = "PRESS C FOR MANUAL"
+        ctx.rgb(*WHITE).move_to(-ctx.text_width(prompt) / 2, 83).text(prompt)
 
     def _draw_instructions(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
