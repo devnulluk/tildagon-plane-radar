@@ -21,6 +21,7 @@ try:
         bearing_from_offsets,
         calibrated_heading,
         is_spaceagon,
+        parse_manual_bearing,
         raw_compass_heading,
         relative_bearing,
         rotate_screen_xy,
@@ -46,6 +47,7 @@ except ImportError:
         bearing_from_offsets,
         calibrated_heading,
         is_spaceagon,
+        parse_manual_bearing,
         raw_compass_heading,
         relative_bearing,
         rotate_screen_xy,
@@ -89,12 +91,13 @@ DEFAULT_CONFIG = {
     "intro_seen": False,
     "heading_up": False,
     "compass_zero": None,
+    "manual_bearing": None,
     "led_sweep": True,
 }
 
-BACKGROUND = (0.01, 0.025, 0.07)
-GRID = (0.0, 0.34, 0.20)
-GRID_DIM = (0.0, 0.20, 0.13)
+BACKGROUND = (0.005, 0.045, 0.025)
+GRID = (0.0, 0.62, 0.32)
+GRID_DIM = (0.0, 0.34, 0.19)
 WHITE = (0.94, 0.96, 1.0)
 RED = (1.0, 0.18, 0.16)
 MAGENTA = (1.0, 0.12, 0.66)
@@ -161,6 +164,7 @@ class PlaneRadarApp(app.App):
         self.aircraft_trail_misses = {}
         self.route_cache = {}
         self.label_elapsed = 0
+        self.screen_sweep_elapsed = 0
         self.status = "Checking GPS..."
         self.poll_elapsed = POLL_INTERVAL_MS
         self.dialog = None
@@ -177,7 +181,16 @@ class PlaneRadarApp(app.App):
         self.wifi_accuracy = None
 
         self.spaceagon = is_spaceagon()
-        self.heading_up = bool(self.config.get("heading_up", False)) and self.spaceagon
+        self.manual_bearing = self.config.get("manual_bearing")
+        if not isinstance(self.manual_bearing, (int, float)):
+            self.manual_bearing = None
+        elif self.manual_bearing < 0.0 or self.manual_bearing >= 360.0:
+            self.manual_bearing = None
+        else:
+            self.manual_bearing = float(self.manual_bearing)
+        self.heading_up = bool(self.config.get("heading_up", False)) and (
+            self.spaceagon or self.manual_bearing is not None
+        )
         self.compass_zero = self.config.get("compass_zero")
         self.compass_heading = None
         self.compass_elapsed = COMPASS_UPDATE_MS
@@ -225,6 +238,7 @@ class PlaneRadarApp(app.App):
                 "use_miles": self.use_miles,
                 "heading_up": self.heading_up,
                 "compass_zero": self.compass_zero,
+                "manual_bearing": self.manual_bearing,
                 "led_sweep": self.led_sweep,
             }
         )
@@ -311,6 +325,27 @@ class PlaneRadarApp(app.App):
                     except Exception:
                         pass
             return
+        if self.setup_stage == "bearing":
+            self._dialog_cleanup()
+            try:
+                value = parse_manual_bearing(text)
+            except ValueError:
+                self.setup_stage = None
+                self.status = "Bearing 0..359 or N"
+                return
+            if value is None:
+                self.manual_bearing = None
+                self.heading_up = False
+                self.setup_stage = None
+                self.status = "North-up"
+                self._persist_preferences()
+                return
+            self.manual_bearing = value
+            self.heading_up = True
+            self.setup_stage = None
+            self.status = "Bearing {:03d} degrees".format(int(round(value)) % 360)
+            self._persist_preferences()
+            return
         try:
             value = float(text)
         except Exception:
@@ -364,6 +399,8 @@ class PlaneRadarApp(app.App):
             prompt = "UK POSTCODE"
         elif self.setup_stage == "lat":
             prompt = "LATITUDE\n(e.g. 51.5074)"
+        elif self.setup_stage == "bearing":
+            prompt = "BADGE BEARING\n0-359 OR N"
         else:
             prompt = "LONGITUDE\n(e.g. -0.1278)"
         self.dialog = TextDialog(
@@ -376,6 +413,8 @@ class PlaneRadarApp(app.App):
         seed = self.pending_location_seed
         if not seed and self.setup_stage == "postcode":
             seed = self.manual_postcode or ""
+        elif not seed and self.setup_stage == "bearing" and self.manual_bearing is not None:
+            seed = str(int(round(self.manual_bearing)) % 360)
         if seed:
             self.dialog.text = seed
             self.pending_location_seed = ""
@@ -502,12 +541,17 @@ class PlaneRadarApp(app.App):
         self.compass_heading = calibrated_heading(raw, self.compass_zero or 0.0)
 
     def _toggle_heading_up(self):
-        if not self.spaceagon:
-            return
         if self.heading_up:
             self.heading_up = False
             self.status = "North-up"
             self._persist_preferences()
+            return
+        if self.manual_bearing is not None:
+            self.heading_up = True
+            self.status = "Bearing-up"
+            self._persist_preferences()
+            return
+        if not self.spaceagon:
             return
         if self.compass_zero is None:
             self.status = "Hold FIRE facing north to calibrate"
@@ -527,13 +571,17 @@ class PlaneRadarApp(app.App):
             return
         self.compass_zero = raw
         self.compass_heading = 0.0
+        self.manual_bearing = None
         self.heading_up = True
         self.status = "Compass calibrated - heading-up"
         self._persist_preferences()
 
     def _display_heading(self):
-        if self.heading_up and self.compass_heading is not None:
-            return self.compass_heading
+        if self.heading_up:
+            if self.manual_bearing is not None:
+                return self.manual_bearing
+            if self.compass_heading is not None:
+                return self.compass_heading
         return 0.0
 
     def _process_spaceagon_actions(self):
@@ -549,7 +597,7 @@ class PlaneRadarApp(app.App):
                 self.range_index = new_index
                 self._persist_preferences()
                 self.poll_elapsed = POLL_INTERVAL_MS
-                self.status = "Range " + self._range_label()
+                self.status = "ZOOM " + self._range_label()
 
         if self.pending_touch_bearing is not None:
             target = self.pending_touch_bearing
@@ -720,7 +768,7 @@ class PlaneRadarApp(app.App):
                 return
             self.aircraft = parse_aircraft(response.json())
             self._update_aircraft_trails()
-            self.status = "{} aircraft".format(len(self.aircraft))
+            self.status = "ZOOM " + self._range_label()
             self.selected_item = None
         except Exception as exc:
             print("plane-radar: ADS-B fetch failed:", exc)
@@ -779,6 +827,13 @@ class PlaneRadarApp(app.App):
         return item.get("icao") or item.get("callsign")
 
     def _aircraft_colour(self, item):
+        kind = item.get("kind", "civilian")
+        if kind == "military":
+            return MAGENTA
+        if kind == "helicopter":
+            return CYAN
+        if kind == "ga":
+            return YELLOW
         key = self._aircraft_key(item) or "?"
         index = sum(ord(char) for char in key) % len(AIRCRAFT_COLOURS)
         return AIRCRAFT_COLOURS[index]
@@ -831,13 +886,13 @@ class PlaneRadarApp(app.App):
             self.button_states.get(BUTTON_TYPES["LEFT"])
             or self.button_states.get(BUTTON_TYPES["UP"])
         ):
-            self.location_choice = (self.location_choice - 1) % 4
+            self.location_choice = (self.location_choice - 1) % 5
             self.button_states.clear()
         elif (
             self.button_states.get(BUTTON_TYPES["RIGHT"])
             or self.button_states.get(BUTTON_TYPES["DOWN"])
         ):
-            self.location_choice = (self.location_choice + 1) % 4
+            self.location_choice = (self.location_choice + 1) % 5
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self.button_states.clear()
@@ -849,6 +904,8 @@ class PlaneRadarApp(app.App):
             elif self.location_choice == 2:
                 self.pending_lat = None
                 self.setup_stage = "lat"
+            elif self.location_choice == 3:
+                self.setup_stage = "bearing"
             else:
                 self.led_sweep = not self.led_sweep
                 self._persist_preferences()
@@ -859,6 +916,7 @@ class PlaneRadarApp(app.App):
 
     def update(self, delta):
         self.label_elapsed = (self.label_elapsed + delta) % 6000
+        self.screen_sweep_elapsed = (self.screen_sweep_elapsed + delta) % 2400
         if not self.leds_active:
             self._acquire_leds()
 
@@ -871,7 +929,7 @@ class PlaneRadarApp(app.App):
             self.compass_elapsed += delta
             if self.compass_elapsed >= COMPASS_UPDATE_MS:
                 self.compass_elapsed = 0
-                if self.heading_up:
+                if self.heading_up and self.manual_bearing is None:
                     self._update_compass()
 
         if self.view == "splash":
@@ -963,6 +1021,7 @@ class PlaneRadarApp(app.App):
         elif self.button_states.get(BUTTON_TYPES["UP"]):
             self.use_miles = not self.use_miles
             self._persist_preferences()
+            self.status = "ZOOM " + self._range_label()
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["DOWN"]):
             self._refresh_position(startup=False)
@@ -1023,10 +1082,34 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*GRID).move_to(73, -4).text(self._range_label())
         ctx.rgb(*WHITE).arc(0, 0, 2, 0, 2 * math.pi, True).fill()
 
-        if self.heading_up and self.compass_heading is not None:
-            text = "HDG {:03d}".format(int(round(self.compass_heading)) % 360)
+        if self.heading_up:
+            prefix = "BRG" if self.manual_bearing is not None else "HDG"
+            text = "{} {:03d}".format(
+                prefix, int(round(self._display_heading())) % 360
+            )
             width = ctx.text_width(text)
             ctx.rgb(*CYAN).move_to(-width / 2, -116).text(text)
+
+    def _draw_idle_sweep(self, ctx):
+        """Keep an empty radar visibly alive without adding bitmap assets."""
+        if self.aircraft or getattr(self, "following", False):
+            return
+        sweep = self.screen_sweep_elapsed * 360.0 / 2400.0
+        for offset, strength in ((-16, 0.22), (-8, 0.48), (0, 1.0)):
+            dx, dy = heading_vector(sweep + offset, GRID_RADIUS - 2)
+            colour = (
+                GRID[0] * strength,
+                GRID[1] * strength,
+                GRID[2] * strength,
+            )
+            ctx.rgb(*colour)
+            ctx.line_width = 1.0 if offset else 1.8
+            ctx.begin_path()
+            ctx.move_to(0, 0)
+            ctx.line_to(dx, dy)
+            ctx.stroke()
+        ctx.rgb(*GRID).arc(dx, dy, 2.0, 0, 2 * math.pi, True).fill()
+        ctx.line_width = 1
 
     def _screen_point_for_aircraft(self, item):
         lat = item.get("lat")
@@ -1041,9 +1124,64 @@ class PlaneRadarApp(app.App):
             self.outer_km,
             GRID_RADIUS,
         )
-        if self.heading_up and self.compass_heading is not None:
-            x, y = rotate_screen_xy(x, y, self.compass_heading)
+        if self.heading_up:
+            x, y = rotate_screen_xy(x, y, self._display_heading())
         return x, y, distance
+
+    def _draw_aircraft_symbol(self, ctx, x, y, item, colour, display_heading):
+        """Draw a feed-classified, rotation-aware aircraft marker."""
+        direction = relative_bearing(item.get("heading", 0.0), display_heading)
+        fdx, fdy = heading_vector(direction, 1.0)
+        rdx, rdy = -fdy, fdx
+        kind = item.get("kind", "civilian")
+        ctx.rgb(*colour)
+
+        if kind == "helicopter":
+            # Circular cabin, tail boom and a crosswise main rotor.
+            ctx.line_width = 1.4
+            ctx.arc(x, y, 3.2, 0, 2 * math.pi, True).stroke()
+            ctx.begin_path()
+            ctx.move_to(x - fdx * 3, y - fdy * 3)
+            ctx.line_to(x - fdx * 8, y - fdy * 8)
+            ctx.move_to(x + rdx * 6, y + rdy * 6)
+            ctx.line_to(x - rdx * 6, y - rdy * 6)
+            ctx.move_to(x - fdx * 8 + rdx * 2, y - fdy * 8 + rdy * 2)
+            ctx.line_to(x - fdx * 8 - rdx * 2, y - fdy * 8 - rdy * 2)
+            ctx.stroke()
+            ctx.line_width = 1
+            return
+
+        if kind == "ga":
+            # A small hollow diamond is legible beside the filled jet shapes.
+            ctx.line_width = 1.5
+            ctx.begin_path()
+            ctx.move_to(x + fdx * 7, y + fdy * 7)
+            ctx.line_to(x + rdx * 4, y + rdy * 4)
+            ctx.line_to(x - fdx * 5, y - fdy * 5)
+            ctx.line_to(x - rdx * 4, y - rdy * 4)
+            ctx.close_path()
+            ctx.stroke()
+            ctx.line_width = 1
+            return
+
+        if kind == "military":
+            # A broad delta with a notched tail.
+            ctx.begin_path()
+            ctx.move_to(x + fdx * 8, y + fdy * 8)
+            ctx.line_to(x - fdx * 2 + rdx * 6, y - fdy * 2 + rdy * 6)
+            ctx.line_to(x - fdx * 1, y - fdy * 1)
+            ctx.line_to(x - fdx * 2 - rdx * 6, y - fdy * 2 - rdy * 6)
+            ctx.close_path()
+            ctx.fill()
+            return
+
+        # Ordinary civilian/commercial traffic keeps the familiar triangle.
+        ctx.begin_path()
+        ctx.move_to(x + fdx * 7, y + fdy * 7)
+        ctx.line_to(x - fdx * 5 + rdx * 5, y - fdy * 5 + rdy * 5)
+        ctx.line_to(x - fdx * 5 - rdx * 5, y - fdy * 5 - rdy * 5)
+        ctx.close_path()
+        ctx.fill()
 
     def _draw_aircraft(self, ctx, item):
         lat = item.get("lat")
@@ -1062,8 +1200,8 @@ class PlaneRadarApp(app.App):
                 self.center_lat, self.center_lon, lat, lon
             )
             x, y = rim_xy(east, north, RIM_RADIUS)
-            if self.heading_up and self.compass_heading is not None:
-                x, y = rotate_screen_xy(x, y, self.compass_heading)
+            if self.heading_up:
+                x, y = rotate_screen_xy(x, y, self._display_heading())
             ctx.rgb(*BACKGROUND).arc(x, y, 4.2, 0, 2 * math.pi, True).fill()
             ctx.rgb(*colour).arc(x, y, 3.1, 0, 2 * math.pi, True).fill()
             return
@@ -1113,19 +1251,7 @@ class PlaneRadarApp(app.App):
         ctx.stroke()
         ctx.line_width = 1
 
-        fdx, fdy = heading_vector(
-            relative_bearing(item.get("heading", 0.0), display_heading), 7.0
-        )
-        rdx = -fdy * 0.7
-        rdy = fdx * 0.7
-        bx = x - fdx * 0.8
-        by = y - fdy * 0.8
-        ctx.rgb(*colour).begin_path()
-        ctx.move_to(x + fdx, y + fdy)
-        ctx.line_to(bx + rdx, by + rdy)
-        ctx.line_to(bx - rdx, by - rdy)
-        ctx.close_path()
-        ctx.fill()
+        self._draw_aircraft_symbol(ctx, x, y, item, colour, display_heading)
 
         if item is self.selected_item:
             ctx.rgb(*YELLOW)
@@ -1306,11 +1432,16 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 20
         ctx.rgb(*WHITE)
         title = "RADAR OPTIONS"
-        ctx.move_to(-ctx.text_width(title) / 2, -92).text(title)
+        ctx.move_to(-ctx.text_width(title) / 2, -70).text(title)
         options = (
             "AUTO GPS / WI-FI",
             "UK POSTCODE",
             "COORDINATES",
+            "BEARING: " + (
+                ("{:03d} DEG".format(int(round(self.manual_bearing)) % 360))
+                if self.manual_bearing is not None and self.heading_up
+                else "NORTH-UP"
+            ),
             "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
         )
         ctx.font_size = 17
@@ -1461,6 +1592,7 @@ class PlaneRadarApp(app.App):
             return
 
         self._draw_grid(ctx)
+        self._draw_idle_sweep(ctx)
         if self.center_lat is not None and self.center_lon is not None:
             aircraft_points = []
             for item in self.aircraft:

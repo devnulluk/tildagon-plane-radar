@@ -42,7 +42,7 @@ for interest only and must not be treated as an authoritative emergency alert.
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode and coordinate fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, or **LED Sweep: On/Off** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate and bearing fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -161,7 +161,7 @@ The two side proximity sensors become hands-free range controls:
 - **Left proximity** decreases the range (zooms in);
 - **Right proximity** increases the range (zooms out).
 
-Range is clamped at the 5 km and 25 km presets rather than wrapping around.
+Range is clamped at the 2 km and 15 km presets rather than wrapping around.
 
 ### Heading-up compass mode
 
@@ -177,13 +177,19 @@ Before using heading-up for the first time, calibrate the zero direction:
 
 A short Fire press then toggles heading-up on/off while preserving the calibration.
 
+### Manual badge bearing
+
+The original Tildagon can also align the radar without a compass. Open **Radar Options > Bearing** and enter the compass direction in which the top of the badge is pointing, from `0` through `359` degrees. For example, enter `320` when the top is pointing north-west at 320 degrees. The value is saved and rotates the screen, cardinal points, traffic vectors and LEDs together. Enter `N` in the bearing field to return to north-up. On Spaceagon, performing a new compass calibration clears the manual value and returns control to the magnetometer.
+
 > Compass support is deliberately marked experimental until it has been checked on physical Spaceagon hardware. The current implementation uses the raw horizontal magnetometer axes plus the saved north offset; we may need to adjust axis direction or add fuller hard-iron calibration after real-badge testing.
 
 ## Display behaviour
 
-The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, heading triangles, track/speed vectors and off-scale direction dots. Large colour-matched labels show callsigns and available route codes, while brighter fading trails retain up to twenty recent positions and survive short gaps in the live feed.
+The default radar remains north-up. It preserves the range rings, track/speed vectors and off-scale direction dots. Large colour-matched labels show callsigns and available route codes, while brighter fading trails retain up to twenty recent positions and survive short gaps in the live feed. The bottom card reports the current zoom instead of an aircraft count, and an empty radar gains a brighter green on-screen sweep.
 
-When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
+When the live feed provides classification metadata, commercial/civilian aircraft use a filled triangle, general-aviation aircraft use a hollow diamond, helicopters use a cabin/rotor marker and military aircraft use a broad delta. Military and rotorcraft metadata takes priority; incomplete metadata falls back safely to the ordinary civilian symbol.
+
+When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. A saved manual alignment uses `BRG` instead. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
 
 The UI is drawn for the badge's native 240×240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
 
@@ -203,7 +209,7 @@ python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_ap
 
 ## App Store package
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.0` is published as `v0.1.0`.
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.1` is published as `v0.1.1`.
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
 

@@ -5,6 +5,7 @@ from location_provider import normalise_position
 from spaceagon import (
     angular_distance,
     calibrated_heading,
+    parse_manual_bearing,
     raw_compass_heading,
     relative_bearing,
     rotate_screen_xy,
@@ -69,6 +70,15 @@ class SpaceagonTests(unittest.TestCase):
         self.assertEqual(zoom_index(1, 1, 4), 2)
         self.assertEqual(zoom_index(0, -1, 4), 0)
         self.assertEqual(zoom_index(3, 1, 4), 3)
+
+    def test_manual_bearing_accepts_degrees_and_north_reset(self):
+        self.assertEqual(parse_manual_bearing("320"), 320.0)
+        self.assertEqual(parse_manual_bearing(0), 0.0)
+        self.assertIsNone(parse_manual_bearing("north"))
+        with self.assertRaises(ValueError):
+            parse_manual_bearing("360")
+        with self.assertRaises(ValueError):
+            parse_manual_bearing("west")
 
 
 if __name__ == "__main__":
