@@ -201,7 +201,7 @@ class PlaneRadarApp(app.App):
         self.view = "radar"
         self.button_states.clear()
         if self.center_lat is None or self.center_lon is None:
-            self.status = "No GPS - OK manual"
+            self.status = "No GPS - press C"
         elif self.location_source == "gps":
             self.status = "GPS position"
         elif self.location_source == "wifi":
@@ -371,8 +371,8 @@ class PlaneRadarApp(app.App):
 
         self.location_source = "none"
         self.location_provider = None
-        self.status = "No auto location - OK manual"
-        self._show_location_notice("NO LOCATION", "PRESS OK FOR MANUAL")
+        self.status = "No auto location - press C"
+        self._show_location_notice("NO LOCATION", "PRESS C FOR MANUAL")
         return False
 
     def _handle_spaceagon_down(self, event):
@@ -818,6 +818,14 @@ class PlaneRadarApp(app.App):
         width = ctx.text_width(label)
         ctx.move_to(x - width / 2, y + 3).text(label)
 
+    def _draw_c_button_pointer(self, ctx):
+        """Point through the lower-right screen edge towards physical button C."""
+        ctx.rgb(*RED).begin_path()
+        ctx.move_to(108, 64)
+        ctx.line_to(87, 51)
+        ctx.line_to(91, 74)
+        ctx.close_path().fill()
+
     def _draw_grid(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
         ctx.line_width = 1
@@ -1010,8 +1018,9 @@ class PlaneRadarApp(app.App):
         if self.first_run:
             draw_qr(ctx, 0, 23, 2)
             ctx.font_size = 8
-            prompt = "Click OK for instructions"
+            prompt = "Press C for instructions"
             ctx.rgb(*YELLOW).move_to(-ctx.text_width(prompt) / 2, 78).text(prompt)
+            self._draw_c_button_pointer(ctx)
         else:
             ctx.font_size = 10
             text = "Scanning the skies..."
@@ -1028,8 +1037,9 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(text) / 2, -91).text(text)
         draw_qr(ctx, 0, -12, 3)
         ctx.font_size = 8
-        hint = "OK / Back to radar"
+        hint = "PRESS C / BACK"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 92).text(hint)
+        self._draw_c_button_pointer(ctx)
 
     def _draw_location_setup(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1049,11 +1059,12 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 11
         hint = "LEFT / RIGHT"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 30).text(hint)
-        hint = "OK TO SELECT"
+        hint = "PRESS C TO SELECT"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 52).text(hint)
         ctx.font_size = 9
         hint = "BACK TO CANCEL"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 83).text(hint)
+        self._draw_c_button_pointer(ctx)
 
     def _draw_location_warning(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1073,8 +1084,9 @@ class PlaneRadarApp(app.App):
         choice = "CONTINUE" if self.location_warning_choice == 0 else "MANUAL"
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, 34).text(choice)
         ctx.font_size = 10
-        hint = "OK TO SELECT"
+        hint = "PRESS C TO SELECT"
         ctx.rgb(*WHITE).move_to(-ctx.text_width(hint) / 2, 65).text(hint)
+        self._draw_c_button_pointer(ctx)
 
     def _draw_location_notice(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1088,8 +1100,9 @@ class PlaneRadarApp(app.App):
         detail = self.location_notice_detail or ""
         ctx.move_to(-ctx.text_width(detail) / 2, 15).text(detail)
         ctx.font_size = 9
-        hint = "OK TO CONTINUE"
+        hint = "PRESS C TO CONTINUE"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 66).text(hint)
+        self._draw_c_button_pointer(ctx)
 
     def _draw_no_location(self, ctx):
         """Use the whole round-safe area while the radar cannot run."""
@@ -1105,7 +1118,7 @@ class PlaneRadarApp(app.App):
         ctx.move_to(-ctx.text_width(line) / 2, -34).text(line)
         ctx.font_size = 12
         ctx.rgb(*GPS_TEXT)
-        line = "OK / ENTER"
+        line = "PRESS C / ENTER"
         ctx.move_to(-ctx.text_width(line) / 2, 8).text(line)
         line = "TYPE POSTCODE"
         ctx.move_to(-ctx.text_width(line) / 2, 32).text(line)
@@ -1113,6 +1126,7 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*ALT_TEXT)
         line = "DOWN: RETRY AUTO"
         ctx.move_to(-ctx.text_width(line) / 2, 63).text(line)
+        self._draw_c_button_pointer(ctx)
 
     def _status_lines(self, ctx, text, max_width=140):
         words = str(text).split()

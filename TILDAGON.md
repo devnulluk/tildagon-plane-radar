@@ -6,7 +6,7 @@ Plane Radar shows live nearby aircraft from adsb.fi on the badge's round display
 
 ## First start
 
-The first launch opens with an animated radar boot screen and an on-badge QR code. Scan it to return to these instructions, or press **OK** while the splash is visible for a larger QR help screen.
+The first launch opens with an animated radar boot screen and an on-badge QR code. Scan it to return to these instructions, or press **C** while the splash is visible for a larger QR help screen.
 
 The first-run splash remains visible for a few seconds so there is time to scan it. Later launches use a shorter animated splash.
 
@@ -20,13 +20,13 @@ If GPS has no fix, Plane Radar checks the existing MicroPython station first and
 
 The chosen location remains fixed while the local radar runs. Press **Down** whenever you want to retry the GPS → Wi-Fi sequence. If neither produces a usable result, the existing radar centre is retained.
 
-Startup and manual refresh results temporarily take over the display in large text. Wi-Fi estimates broader than 5 km pause on a full-screen warning so you can continue with the rough centre or choose manual setup. Other results close automatically after a few seconds, or immediately with OK, revealing the populated radar underneath.
+Startup and manual refresh results temporarily take over the display in large text. Wi-Fi estimates broader than 5 km pause on a full-screen warning so you can continue with the rough centre or choose manual setup. Other results close automatically after a few seconds, or immediately with C, revealing the populated radar underneath. Large interaction screens label the physical C button explicitly and show a red pointer towards it.
 
 Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
-When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. OK or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
+When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **OK/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with Left/Right and press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -38,7 +38,7 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 | Left | Refresh aircraft immediately |
 | Up | Toggle kilometres / miles |
 | Down | Retry GPS, then Wi-Fi positioning |
-| OK / Confirm | Choose automatic, postcode or coordinate location setup |
+| C / Confirm | Open radar options |
 | Left + Right | Open Follow Flight without a keyboard |
 | Cancel / Back | Minimise Plane Radar |
 
