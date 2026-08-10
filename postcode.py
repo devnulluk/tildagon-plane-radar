@@ -8,6 +8,14 @@ def normalise_postcode(value):
     return "".join(str(value or "").upper().split())
 
 
+def format_postcode(value):
+    """Return a compact postcode with the standard space before its last 3 chars."""
+    compact = normalise_postcode(value)
+    if len(compact) < 5:
+        return compact
+    return compact[:-3] + " " + compact[-3:]
+
+
 def postcode_coordinates(payload):
     """Extract and validate latitude/longitude from a Postcodes.io response."""
     if not isinstance(payload, dict) or payload.get("status") != 200:

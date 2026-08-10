@@ -28,7 +28,12 @@ try:
         zoom_index,
     )
     from .instructions_qr import draw_qr
-    from .postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
+    from .postcode import (
+        POSTCODE_URL,
+        format_postcode,
+        normalise_postcode,
+        postcode_coordinates,
+    )
     from .wifi_location import get_wifi_position
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
@@ -47,7 +52,12 @@ except ImportError:
         zoom_index,
     )
     from instructions_qr import draw_qr
-    from postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
+    from postcode import (
+        POSTCODE_URL,
+        format_postcode,
+        normalise_postcode,
+        postcode_coordinates,
+    )
     from wifi_location import get_wifi_position
 
 CONFIG_KEY = "plane_radar_tildagon"
@@ -68,6 +78,7 @@ KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
     "lat": None,
     "lon": None,
+    "postcode": None,
     "range_index": DEFAULT_RANGE_INDEX,
     "range_profile": RANGE_PROFILE,
     "use_miles": False,
@@ -123,6 +134,7 @@ class PlaneRadarApp(app.App):
         self.range_index = self.config["range_index"]
         self.manual_lat = self.config.get("lat")
         self.manual_lon = self.config.get("lon")
+        self.manual_postcode = self.config.get("postcode")
         self.center_lat = self.manual_lat
         self.center_lon = self.manual_lon
         self.location_source = (
@@ -190,6 +202,7 @@ class PlaneRadarApp(app.App):
             {
                 "lat": self.manual_lat,
                 "lon": self.manual_lon,
+                "postcode": self.manual_postcode,
                 "range_index": self.range_index,
                 "use_miles": self.use_miles,
                 "heading_up": self.heading_up,
@@ -255,7 +268,9 @@ class PlaneRadarApp(app.App):
                     self.status = "Postcode not found"
                     self.setup_stage = None
                     return
-                self._save_manual_location(coords[0], coords[1])
+                self._save_manual_location(
+                    coords[0], coords[1], postcode=format_postcode(postcode)
+                )
                 self.status = "Postcode location saved"
             except Exception as exc:
                 print("plane-radar: postcode lookup failed:", exc)
@@ -294,9 +309,11 @@ class PlaneRadarApp(app.App):
             self.pending_lat = None
             self.status = "Manual location saved"
 
-    def _save_manual_location(self, lat, lon):
+    def _save_manual_location(self, lat, lon, postcode=None):
         self.manual_lat = lat
         self.manual_lon = lon
+        if postcode is not None:
+            self.manual_postcode = postcode
         self._dialog_cleanup()
         self.setup_stage = None
         self._persist_preferences()
@@ -328,8 +345,11 @@ class PlaneRadarApp(app.App):
             on_complete=self._complete_location,
             on_cancel=self._cancel_location,
         )
-        if self.pending_location_seed:
-            self.dialog.text = self.pending_location_seed
+        seed = self.pending_location_seed
+        if not seed and self.setup_stage == "postcode":
+            seed = self.manual_postcode or ""
+        if seed:
+            self.dialog.text = seed
             self.pending_location_seed = ""
 
     def _refresh_position(self, startup=False):
