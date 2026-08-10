@@ -32,6 +32,29 @@ def _altitude(item):
     if abs(value) >= 1000: return "{}k".format(int(round(value / 1000.0)))
     return str(value)
 
+def classify_aircraft(item):
+    """Return a small display class from readsb/adsb.fi metadata.
+
+    The feed's database military flag is the strongest signal. ADS-B emitter
+    category A7 identifies rotorcraft; light/small and specialist categories
+    are grouped as general aviation. Unknown aircraft stay ordinary civilian
+    traffic so incomplete feeds never hide a target.
+    """
+    flags = item.get("dbFlags", item.get("db_flags", 0))
+    try:
+        flags = int(flags)
+    except (TypeError, ValueError):
+        flags = 0
+    if flags & 1:
+        return "military"
+
+    category = _trim(item.get("category")).upper()
+    if category == "A7":
+        return "helicopter"
+    if category in ("A1", "A2", "B1", "B2", "B3", "B4", "B5", "B6"):
+        return "ga"
+    return "civilian"
+
 def parse_aircraft(payload, show_ground=False, max_aircraft=MAX_AIRCRAFT):
     result = []
     if not isinstance(payload, dict): return result
@@ -44,6 +67,11 @@ def parse_aircraft(payload, show_ground=False, max_aircraft=MAX_AIRCRAFT):
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)): continue
         if plane.get("alt_baro") == "ground" and not show_ground: continue
         callsign = _trim(plane.get("flight")) or _trim(plane.get("hex"), "?")
+        category = _trim(plane.get("category")).upper()[:2]
+        try:
+            db_flags = int(plane.get("dbFlags", 0))
+        except (TypeError, ValueError):
+            db_flags = 0
         result.append({
             "lat": float(lat), "lon": float(lon),
             "icao": _trim(plane.get("hex")),
@@ -53,5 +81,7 @@ def parse_aircraft(payload, show_ground=False, max_aircraft=MAX_AIRCRAFT):
             "track": _number(plane, "track", "true_heading", "mag_heading", "dir"),
             "speed": _number(plane, "gs", "tas", "ias"),
             "callsign": callsign[:9], "type": _trim(plane.get("t"))[:6], "alt": _altitude(plane),
+            "category": category, "db_flags": db_flags,
+            "kind": classify_aircraft(plane),
         })
     return result

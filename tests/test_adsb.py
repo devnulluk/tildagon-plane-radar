@@ -1,5 +1,5 @@
 import unittest
-from adsb import build_squawk_url, build_url, parse_aircraft
+from adsb import build_squawk_url, build_url, classify_aircraft, parse_aircraft
 
 class AdsbTests(unittest.TestCase):
     def test_url_uses_nautical_miles(self):
@@ -17,3 +17,29 @@ class AdsbTests(unittest.TestCase):
         payload={"ac":[{"lat":51.0,"lon":0.0,"alt_baro":"ground"}]}; self.assertEqual(parse_aircraft(payload),[]); self.assertEqual(len(parse_aircraft(payload,show_ground=True)),1)
     def test_missing_coordinates_are_skipped(self):
         self.assertEqual(len(parse_aircraft({"ac":[{"flight":"NOLOC"},{"lat":51.0,"lon":0.0}]})),1)
+
+    def test_aircraft_classification_prefers_military_flag(self):
+        self.assertEqual(
+            classify_aircraft({"dbFlags": 1, "category": "A7"}),
+            "military",
+        )
+
+    def test_aircraft_categories_select_safe_display_symbols(self):
+        self.assertEqual(classify_aircraft({"category": "A7"}), "helicopter")
+        self.assertEqual(classify_aircraft({"category": "A1"}), "ga")
+        self.assertEqual(classify_aircraft({"category": "B4"}), "ga")
+        self.assertEqual(classify_aircraft({"category": "A3"}), "civilian")
+        self.assertEqual(classify_aircraft({}), "civilian")
+
+    def test_parser_preserves_symbol_metadata(self):
+        item = parse_aircraft({
+            "ac": [{
+                "lat": 51.0,
+                "lon": 0.0,
+                "category": "A7",
+                "dbFlags": 0,
+            }]
+        })[0]
+        self.assertEqual(item["category"], "A7")
+        self.assertEqual(item["db_flags"], 0)
+        self.assertEqual(item["kind"], "helicopter")

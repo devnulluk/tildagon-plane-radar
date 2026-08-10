@@ -11,11 +11,11 @@ This is a native MicroPython port of [MatixYo/ESP32-Plane-Radar](https://github.
 - live nearby aircraft from [adsb.fi](https://opendata.adsb.fi/)
 - GPS → Wi-Fi estimate → saved postcode/manual location fallback
 - readable, round-screen-safe setup and warning screens
-- callsigns, colour-matched labels, heading markers and fading trails
+- callsigns, colour-matched labels, classified aircraft symbols and fading trails
 - optional origin/destination labels from [adsbdb.com](https://www.adsbdb.com/)
 - flight-follow mode with route, progress and aircraft details
 - emergency-squawk focus with a slow red LED pulse
-- configurable green LED sweep and bearing-aligned traffic lights
+- saved manual badge bearing, configurable green LED sweep and bearing-aligned traffic lights
 - optional Keepdexpansion keyboard and Spaceagon controls
 - compatible with the original 2024 Tildagon without either expansion
 
@@ -41,7 +41,7 @@ On startup, Plane Radar tries location sources in this order:
 2. an approximate Wi-Fi position from BeaconDB;
 3. the last saved postcode or manual coordinates.
 
-A rough Wi-Fi result is clearly labelled before use. Press **C** to open Radar Options and choose automatic location, UK postcode, decimal coordinates, or the LED-sweep setting. Postcodes are resolved through [Postcodes.io](https://postcodes.io/) without an API key.
+A rough Wi-Fi result is clearly labelled before use. Press **C** to open Radar Options and choose automatic location, UK postcode, decimal coordinates, manual badge bearing, or the LED-sweep setting. Postcodes are resolved through [Postcodes.io](https://postcodes.io/) without an API key.
 
 ## Controls
 
@@ -58,6 +58,8 @@ A rough Wi-Fi result is clearly labelled before use. Press **C** to open Radar O
 Keyboard arrows and Enter work in menus and entry screens. With Keepdexpansion, start typing a callsign or flight number directly from the radar; Escape goes back.
 
 The default range is 10 km, with 2, 5, 10 and 15 km options. Spaceagon proximity controls can adjust the range, touch sensors can select traffic by direction, and its joystick maps to the standard controls.
+
+The bottom card shows the current zoom rather than a traffic count. With no aircraft in range, a brighter green on-screen sweep keeps the empty radar visibly active. Commercial/civilian traffic uses the familiar filled triangle; GA uses a hollow diamond, helicopters a rotor symbol, and military aircraft a broad delta when the ADS-B feed supplies enough classification data.
 
 ## Flight following and emergencies
 

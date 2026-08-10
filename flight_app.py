@@ -386,8 +386,8 @@ class PlaneRadarApp(base.PlaneRadarApp):
             self.status = "EMERGENCY " + self.emergency_code
             return
         if self.follow_locked:
-            self.status = "{} + {} nearby".format(
-                self.follow_query, len(self.aircraft)
+            self.status = "{}  ZOOM {}".format(
+                self.follow_query, self._range_label()
             )
         else:
             self.status = self.follow_query + " signal lost"

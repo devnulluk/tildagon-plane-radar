@@ -82,6 +82,20 @@ def calibrated_heading(raw_heading, zero_offset):
     return (float(raw_heading) - float(zero_offset or 0.0)) % 360.0
 
 
+def parse_manual_bearing(value):
+    """Parse 0..359 degrees, with N/NORTH as an explicit north-up reset."""
+    text = str(value).strip().upper()
+    if text in ("N", "NORTH"):
+        return None
+    try:
+        bearing = float(text)
+    except (TypeError, ValueError):
+        raise ValueError("bearing must be 0..359 or N")
+    if bearing < 0.0 or bearing >= 360.0:
+        raise ValueError("bearing must be 0..359")
+    return bearing
+
+
 def zoom_index(current, direction, count):
     if count <= 0:
         return current
