@@ -181,7 +181,7 @@ A short Fire press then toggles heading-up on/off while preserving the calibrati
 
 ## Display behaviour
 
-The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, heading triangles, track/speed vectors and off-scale direction dots. Large colour-matched labels show callsigns and available route codes, while brighter fading trails retain up to ten recent positions and survive short gaps in the live feed.
+The default radar remains north-up. It preserves the upstream project's 5/10/15/25 km ring presets, heading triangles, track/speed vectors and off-scale direction dots. Large colour-matched labels show callsigns and available route codes, while brighter fading trails retain up to twenty recent positions and survive short gaps in the live feed.
 
 When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
 
