@@ -159,7 +159,7 @@ The default radar remains north-up. It preserves the upstream project's 5/10/15/
 
 When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
 
-The UI is drawn for the badge's native 240Ã—240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
+The UI is drawn for the badge's native 240×240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
 
 ## Host-side tests
 
@@ -190,4 +190,3 @@ Network requests currently use Tildagon's synchronous `requests` module, so a sl
 ## Data and attribution
 
 Original Plane Radar project: **MatixYo/ESP32-Plane-Radar**, MIT licensed. This port retains the same licence and uses adsb.fi for live aircraft data. Follow Flight additionally uses adsb.lol/VRS standing route data when available to resolve origin and destination metadata.
-

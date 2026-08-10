@@ -21,4 +21,3 @@ class PostcodeTests(unittest.TestCase):
                 {"status": 200, "result": {"latitude": 91, "longitude": 0}}
             )
         )
-

@@ -986,4 +986,3 @@ class PlaneRadarApp(app.App):
 
 
 __app_export__ = PlaneRadarApp
-

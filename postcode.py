@@ -22,4 +22,3 @@ def postcode_coordinates(payload):
     if not -90 <= lat <= 90 or not -180 <= lon <= 180:
         return None
     return float(lat), float(lon)
-
