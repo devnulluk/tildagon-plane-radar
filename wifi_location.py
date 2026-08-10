@@ -75,16 +75,35 @@ def get_wifi_position(requests_module, timeout=6):
     response = None
     try:
         import network
+        try:
+            import wifi
+
+            if not wifi.status():
+                print("plane-radar: connecting Wi-Fi for location")
+                wifi.connect()
+                if not wifi.wait():
+                    print("plane-radar: Wi-Fi connection unavailable")
+                    return None
+        except ImportError:
+            wifi = None
 
         station_id = getattr(network, "STA_IF", None)
         if station_id is None:
             station_id = network.WLAN.IF_STA
         station = network.WLAN(station_id)
-        if not wait_for_connection(station):
+        if wifi is None and not wait_for_connection(station):
+            print("plane-radar: WLAN station did not connect")
             return None
-        payload = build_wifi_payload(station.scan())
+        try:
+            scan_results = station.scan()
+        except Exception as exc:
+            # ESP-NOW firmware can temporarily reject active scans. BeaconDB
+            # can still provide its coarser IP-based estimate.
+            print("plane-radar: Wi-Fi scan unavailable:", exc)
+            scan_results = ()
+        payload = build_wifi_payload(scan_results)
         if not payload["wifiAccessPoints"]:
-            return None
+            print("plane-radar: using BeaconDB IP fallback")
         response = requests_module.post(
             BEACONDB_URL,
             data=json.dumps(payload),
@@ -95,8 +114,15 @@ def get_wifi_position(requests_module, timeout=6):
             timeout=timeout,
         )
         if getattr(response, "status_code", 200) != 200:
+            print(
+                "plane-radar: BeaconDB HTTP",
+                getattr(response, "status_code", "?"),
+            )
             return None
-        return parse_beacondb_response(response.json())
+        result = parse_beacondb_response(response.json())
+        if result is None:
+            print("plane-radar: BeaconDB returned no usable estimate")
+        return result
     except Exception as exc:
         print("plane-radar: Wi-Fi location failed:", exc)
         return None

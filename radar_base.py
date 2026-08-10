@@ -1015,7 +1015,30 @@ class PlaneRadarApp(app.App):
         hint = "OK TO CONTINUE"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 66).text(hint)
 
-    def _status_lines(self, ctx, text, max_width=184):
+    def _draw_no_location(self, ctx):
+        """Use the whole round-safe area while the radar cannot run."""
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.rgb(*GRID_DIM).arc(0, 0, 105, 0, 2 * math.pi, True).stroke()
+        ctx.font_size = 19
+        ctx.rgb(*YELLOW)
+        title = "NO LOCATION"
+        ctx.move_to(-ctx.text_width(title) / 2, -70).text(title)
+        ctx.font_size = 13
+        ctx.rgb(*WHITE)
+        line = "RADAR IS PAUSED"
+        ctx.move_to(-ctx.text_width(line) / 2, -34).text(line)
+        ctx.font_size = 12
+        ctx.rgb(*GPS_TEXT)
+        line = "DOWN: TRY AUTO"
+        ctx.move_to(-ctx.text_width(line) / 2, 8).text(line)
+        line = "OK: SET MANUAL"
+        ctx.move_to(-ctx.text_width(line) / 2, 32).text(line)
+        ctx.font_size = 10
+        ctx.rgb(*ALT_TEXT)
+        line = "BACK: EXIT"
+        ctx.move_to(-ctx.text_width(line) / 2, 63).text(line)
+
+    def _status_lines(self, ctx, text, max_width=140):
         words = str(text).split()
         lines = []
         current = ""
@@ -1041,8 +1064,9 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 11
         lines = self._status_lines(ctx, self.status)
         height = 21 if len(lines) == 1 else 35
-        top = 112 - height
-        ctx.rgba(0, 0, 0, 0.86).rectangle(-100, top, 200, height).fill()
+        # Keep the card inside the useful circular area of the physical LCD.
+        top = 79 - height
+        ctx.rgba(0, 0, 0, 0.86).rectangle(-78, top, 156, height).fill()
         ctx.rgb(*YELLOW)
         start_y = top + (14 if len(lines) == 1 else 13)
         for index, line in enumerate(lines):
@@ -1063,14 +1087,22 @@ class PlaneRadarApp(app.App):
             ctx.restore()
             return
 
+        if self.location_notice is not None:
+            self._draw_location_notice(ctx)
+            ctx.restore()
+            return
+
+        if self.center_lat is None or self.center_lon is None:
+            self._draw_no_location(ctx)
+            ctx.restore()
+            return
+
         self._draw_grid(ctx)
         if self.center_lat is not None and self.center_lon is not None:
             for item in self.aircraft:
                 self._draw_aircraft(ctx, item)
         self._draw_location_source(ctx)
         self._draw_selection(ctx)
-        if self.location_notice is not None:
-            self._draw_location_notice(ctx)
         if self.status and self.location_notice is None:
             self._draw_status_card(ctx)
         ctx.restore()
