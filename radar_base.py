@@ -168,6 +168,7 @@ class PlaneRadarApp(app.App):
         self.location_notice_elapsed = 0
         self.location_warning = False
         self.location_warning_choice = 0
+        self.location_warning_saved = False
         self.wifi_accuracy = None
 
         self.spaceagon = is_spaceagon()
@@ -383,6 +384,7 @@ class PlaneRadarApp(app.App):
             self.center_lon = lon
             self.location_source = "gps"
             self.location_provider = provider_name
+            self.location_warning_saved = False
             self.status = "GPS lock" if startup else "GPS updated"
             self._show_location_notice("GPS LOCATION", "READY")
             self.poll_elapsed = POLL_INTERVAL_MS
@@ -391,17 +393,35 @@ class PlaneRadarApp(app.App):
         result = get_wifi_position(requests)
         if result is not None:
             lat, lon, accuracy = result
-            self.center_lat = lat
-            self.center_lon = lon
-            self.location_source = "wifi"
-            self.location_provider = "BeaconDB"
             self.wifi_accuracy = accuracy
             self.status = "Wi-Fi ~{}m".format(int(round(accuracy)))
             if accuracy >= COARSE_LOCATION_METRES:
                 self.location_warning = True
                 self.location_warning_choice = 0
                 self.location_notice = None
+                if (
+                    self.manual_postcode
+                    and self.manual_lat is not None
+                    and self.manual_lon is not None
+                ):
+                    self.center_lat = self.manual_lat
+                    self.center_lon = self.manual_lon
+                    self.location_source = "manual"
+                    self.location_provider = None
+                    self.location_warning_saved = True
+                    self.status = "Wi-Fi rough - using " + self.manual_postcode
+                else:
+                    self.center_lat = lat
+                    self.center_lon = lon
+                    self.location_source = "wifi"
+                    self.location_provider = "BeaconDB"
+                    self.location_warning_saved = False
             else:
+                self.center_lat = lat
+                self.center_lon = lon
+                self.location_source = "wifi"
+                self.location_provider = "BeaconDB"
+                self.location_warning_saved = False
                 self._show_location_notice(
                     "WI-FI LOCATION", "ABOUT {}m".format(int(round(accuracy)))
                 )
@@ -811,6 +831,15 @@ class PlaneRadarApp(app.App):
             return
 
         if self.location_warning:
+            if self.location_warning_saved:
+                if (
+                    self.button_states.get(BUTTON_TYPES["CONFIRM"])
+                    or self.button_states.get(BUTTON_TYPES["CANCEL"])
+                ):
+                    self.button_states.clear()
+                    self.location_warning = False
+                    self.poll_elapsed = POLL_INTERVAL_MS
+                return
             if (
                 self.button_states.get(BUTTON_TYPES["LEFT"])
                 or self.button_states.get(BUTTON_TYPES["UP"])
@@ -1211,18 +1240,30 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*YELLOW).arc(0, 0, 102, 0, 2 * math.pi, True).stroke()
         ctx.font_size = 18
         ctx.rgb(*YELLOW)
-        title = "ROUGH LOCATION"
+        title = (
+            "WI-FI INACCURATE"
+            if self.location_warning_saved
+            else "ROUGH LOCATION"
+        )
         ctx.move_to(-ctx.text_width(title) / 2, -70).text(title)
         ctx.font_size = 13
         ctx.rgb(*WHITE)
         detail = "ABOUT {}km".format(int(round((self.wifi_accuracy or 0) / 1000.0)))
         ctx.move_to(-ctx.text_width(detail) / 2, -35).text(detail)
-        ctx.font_size = 11
-        hint = "LEFT (E) / RIGHT (B)"
-        ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 4).text(hint)
-        ctx.font_size = 16
-        choice = "CONTINUE" if self.location_warning_choice == 0 else "MANUAL"
-        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, 34).text(choice)
+        if self.location_warning_saved:
+            ctx.font_size = 10
+            hint = "USING SAVED POSTCODE"
+            ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 4).text(hint)
+            ctx.font_size = 16
+            choice = self.manual_postcode or "SAVED LOCATION"
+            ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, 34).text(choice)
+        else:
+            ctx.font_size = 11
+            hint = "LEFT (E) / RIGHT (B)"
+            ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 4).text(hint)
+            ctx.font_size = 16
+            choice = "CONTINUE" if self.location_warning_choice == 0 else "MANUAL"
+            ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, 34).text(choice)
         ctx.font_size = 10
         hint = "PRESS C TO SELECT"
         ctx.rgb(*WHITE).move_to(-ctx.text_width(hint) / 2, 65).text(hint)

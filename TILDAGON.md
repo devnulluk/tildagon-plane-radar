@@ -20,7 +20,7 @@ If GPS has no fix, Plane Radar checks the existing MicroPython station first and
 
 The chosen location remains fixed while the local radar runs. Press **Down** whenever you want to retry the GPS → Wi-Fi sequence. If neither produces a usable result, the existing radar centre is retained.
 
-Startup and manual refresh results temporarily take over the display in large text. Wi-Fi estimates broader than 5 km pause on a full-screen warning so you can continue with the rough centre or choose manual setup. Other results close automatically after a few seconds, or immediately with C, revealing the populated radar underneath. Large interaction screens label the physical controls explicitly.
+Startup and manual refresh results temporarily take over the display in large text. If a Wi-Fi estimate is broader than 5 km and a postcode has previously been saved, Plane Radar shows a warning and automatically keeps the saved postcode location. If no postcode is saved, the warning still offers the rough Wi-Fi centre or manual setup. Other results close automatically after a few seconds, or immediately with C, revealing the populated radar underneath. Large interaction screens label the physical controls explicitly.
 
 Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
