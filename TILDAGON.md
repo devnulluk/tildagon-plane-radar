@@ -18,7 +18,7 @@ For compatibility with older GPS EEPROM firmware, Plane Radar also checks active
 
 The chosen location remains fixed while the local radar runs; it does not continuously follow GPS. Press **Down** whenever you want to request a fresh GPS fix. If no new fix is available, the existing radar centre is retained.
 
-A manually entered latitude/longitude can be saved at any time with **OK/Confirm** and remains available when no GPS fix is present.
+Press **OK/Confirm** to open the large-text location chooser. Select **UK Postcode**, **Coordinates**, or **GPS Fix** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when no GPS fix is present.
 
 ## Standard controls
 
@@ -30,7 +30,7 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 | Left | Refresh aircraft immediately |
 | Up | Toggle kilometres / miles |
 | Down | Request a new GPS position |
-| OK / Confirm | Edit and save manual latitude / longitude |
+| OK / Confirm | Choose postcode, coordinates or GPS location setup |
 | Left + Right | Open Follow Flight without a keyboard |
 | Cancel / Back | Minimise Plane Radar |
 
@@ -159,7 +159,7 @@ The default radar remains north-up. It preserves the upstream project's 5/10/15/
 
 When Spaceagon heading-up is enabled, a cyan `HDG` marker and numeric heading appear on screen. `SP` indicates that Spaceagon-only controls are available. The local location marker shows `GPS`, `MAN` or `NO LOC`; while following a flight it changes to `FLT`.
 
-The UI is drawn for the badge's native 240×240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
+The UI is drawn for the badge's native 240Ã—240 display. Font sizes and labels are intentionally small and sparse rather than assuming a phone-like high-resolution display.
 
 ## Host-side tests
 
@@ -172,7 +172,7 @@ python -m unittest discover -s tests -v
 The app source can also be syntax checked with standard Python:
 
 ```sh
-python -m py_compile app.py radar_base.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
+python -m py_compile app.py radar_base.py postcode.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
 ```
 
 ## Publishing
@@ -190,3 +190,4 @@ Network requests currently use Tildagon's synchronous `requests` module, so a sl
 ## Data and attribution
 
 Original Plane Radar project: **MatixYo/ESP32-Plane-Radar**, MIT licensed. This port retains the same licence and uses adsb.fi for live aircraft data. Follow Flight additionally uses adsb.lol/VRS standing route data when available to resolve origin and destination metadata.
+

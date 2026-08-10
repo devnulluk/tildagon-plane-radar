@@ -28,6 +28,7 @@ try:
         zoom_index,
     )
     from .instructions_qr import draw_qr
+    from .postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
@@ -45,6 +46,7 @@ except ImportError:
         zoom_index,
     )
     from instructions_qr import draw_qr
+    from postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -124,6 +126,7 @@ class PlaneRadarApp(app.App):
         self.dialog = None
         self.setup_stage = None
         self.pending_lat = None
+        self.location_choice = 0
 
         self.spaceagon = is_spaceagon()
         self.heading_up = bool(self.config.get("heading_up", False)) and self.spaceagon
@@ -209,6 +212,35 @@ class PlaneRadarApp(app.App):
 
     def _complete_location(self):
         text = self.dialog.text.strip() if self.dialog is not None else ""
+        if self.setup_stage == "postcode":
+            self._dialog_cleanup()
+            postcode = normalise_postcode(text)
+            if len(postcode) < 5 or len(postcode) > 7:
+                self.setup_stage = None
+                self.status = "Invalid UK postcode"
+                return
+            response = None
+            try:
+                self.status = "Looking up postcode..."
+                response = requests.get(POSTCODE_URL.format(postcode))
+                coords = postcode_coordinates(response.json())
+                if coords is None:
+                    self.status = "Postcode not found"
+                    self.setup_stage = None
+                    return
+                self._save_manual_location(coords[0], coords[1])
+                self.status = "Postcode location saved"
+            except Exception as exc:
+                print("plane-radar: postcode lookup failed:", exc)
+                self.setup_stage = None
+                self.status = "Postcode lookup failed"
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+            return
         try:
             value = float(text)
         except Exception:
@@ -231,27 +263,31 @@ class PlaneRadarApp(app.App):
                 self._dialog_cleanup()
                 self.status = "Longitude -180..180"
                 return
-            self.manual_lat = self.pending_lat
-            self.manual_lon = value
+            self._save_manual_location(self.pending_lat, value)
             self.pending_lat = None
-            self._dialog_cleanup()
-            self.setup_stage = None
-            self._persist_preferences()
-            self.center_lat = self.manual_lat
-            self.center_lon = self.manual_lon
-            self.location_source = "manual"
-            self.location_provider = None
-            self.poll_elapsed = POLL_INTERVAL_MS
             self.status = "Manual location saved"
+
+    def _save_manual_location(self, lat, lon):
+        self.manual_lat = lat
+        self.manual_lon = lon
+        self._dialog_cleanup()
+        self.setup_stage = None
+        self._persist_preferences()
+        self.center_lat = lat
+        self.center_lon = lon
+        self.location_source = "manual"
+        self.location_provider = None
+        self.poll_elapsed = POLL_INTERVAL_MS
 
     def _open_setup_dialog_if_needed(self):
         if self.dialog is not None or self.setup_stage is None:
             return
-        prompt = (
-            "Radar latitude\n(e.g. 51.5074)"
-            if self.setup_stage == "lat"
-            else "Radar longitude\n(e.g. -0.1278)"
-        )
+        if self.setup_stage == "postcode":
+            prompt = "UK POSTCODE\n(e.g. CM7 1AA)"
+        elif self.setup_stage == "lat":
+            prompt = "LATITUDE\n(e.g. 51.5074)"
+        else:
+            prompt = "LONGITUDE\n(e.g. -0.1278)"
         self.dialog = TextDialog(
             prompt,
             self,
@@ -583,6 +619,27 @@ class PlaneRadarApp(app.App):
             self.button_states.clear()
             self._finish_splash()
 
+    def _handle_location_setup_input(self):
+        if self.button_states.get(BUTTON_TYPES["LEFT"]):
+            self.location_choice = (self.location_choice - 1) % 3
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["RIGHT"]):
+            self.location_choice = (self.location_choice + 1) % 3
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
+            self.button_states.clear()
+            self.view = "radar"
+            if self.location_choice == 0:
+                self.setup_stage = "postcode"
+            elif self.location_choice == 1:
+                self.pending_lat = None
+                self.setup_stage = "lat"
+            else:
+                self._refresh_position(startup=False)
+        elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
+            self.button_states.clear()
+            self.view = "radar"
+
     def update(self, delta):
         if not self.leds_active:
             self._acquire_leds()
@@ -608,6 +665,9 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "instructions":
             self._handle_instructions_input()
+            return
+        if self.view == "location_setup":
+            self._handle_location_setup_input()
             return
 
         self._open_setup_dialog_if_needed()
@@ -637,8 +697,8 @@ class PlaneRadarApp(app.App):
             self._refresh_position(startup=False)
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
-            self.setup_stage = "lat"
-            self.pending_lat = None
+            self.location_choice = 0
+            self.view = "location_setup"
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
@@ -875,6 +935,25 @@ class PlaneRadarApp(app.App):
         hint = "OK / Back to radar"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 92).text(hint)
 
+    def _draw_location_setup(self, ctx):
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.font_size = 20
+        ctx.rgb(*WHITE)
+        title = "SET LOCATION"
+        ctx.move_to(-ctx.text_width(title) / 2, -92).text(title)
+        options = ("UK POSTCODE", "COORDINATES", "GPS FIX")
+        ctx.font_size = 17
+        choice = options[self.location_choice]
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, -18).text(choice)
+        ctx.font_size = 11
+        hint = "LEFT / RIGHT"
+        ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 30).text(hint)
+        hint = "OK TO SELECT"
+        ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 52).text(hint)
+        ctx.font_size = 9
+        hint = "BACK TO CANCEL"
+        ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 83).text(hint)
+
     def draw(self, ctx):
         ctx.save()
         if self.view == "splash":
@@ -883,6 +962,10 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "instructions":
             self._draw_instructions(ctx)
+            ctx.restore()
+            return
+        if self.view == "location_setup":
+            self._draw_location_setup(ctx)
             ctx.restore()
             return
 
@@ -903,3 +986,4 @@ class PlaneRadarApp(app.App):
 
 
 __app_export__ = PlaneRadarApp
+
