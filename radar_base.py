@@ -29,6 +29,7 @@ try:
     )
     from .instructions_qr import draw_qr
     from .postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
+    from .wifi_location import get_wifi_position
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
@@ -47,6 +48,7 @@ except ImportError:
     )
     from instructions_qr import draw_qr
     from postcode import POSTCODE_URL, normalise_postcode, postcode_coordinates
+    from wifi_location import get_wifi_position
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -190,6 +192,8 @@ class PlaneRadarApp(app.App):
             self.status = "No GPS - OK manual"
         elif self.location_source == "gps":
             self.status = "GPS position"
+        elif self.location_source == "wifi":
+            self.status = "Wi-Fi estimate"
         else:
             self.status = "Manual position"
 
@@ -297,7 +301,7 @@ class PlaneRadarApp(app.App):
         )
 
     def _refresh_position(self, startup=False):
-        """Try GPS once; retain the existing centre when no new fix exists."""
+        """Try GPS, then Wi-Fi; retain the saved manual centre on failure."""
         result = get_best_position()
         if result is not None:
             lat, lon, provider_name = result
@@ -309,8 +313,19 @@ class PlaneRadarApp(app.App):
             self.poll_elapsed = POLL_INTERVAL_MS
             return True
 
+        result = get_wifi_position(requests)
+        if result is not None:
+            lat, lon, accuracy = result
+            self.center_lat = lat
+            self.center_lon = lon
+            self.location_source = "wifi"
+            self.location_provider = "BeaconDB"
+            self.status = "Wi-Fi ~{}m".format(int(round(accuracy)))
+            self.poll_elapsed = POLL_INTERVAL_MS
+            return True
+
         if self.center_lat is not None and self.center_lon is not None:
-            self.status = "No GPS fix - kept location"
+            self.status = "Auto location failed - kept location"
             return False
 
         if self.manual_lat is not None and self.manual_lon is not None:
@@ -318,13 +333,13 @@ class PlaneRadarApp(app.App):
             self.center_lon = self.manual_lon
             self.location_source = "manual"
             self.location_provider = None
-            self.status = "No GPS - manual location"
+            self.status = "Using manual location"
             self.poll_elapsed = POLL_INTERVAL_MS
             return False
 
         self.location_source = "none"
         self.location_provider = None
-        self.status = "No GPS - OK manual"
+        self.status = "No auto location - OK manual"
         return False
 
     def _handle_spaceagon_down(self, event):
@@ -630,12 +645,12 @@ class PlaneRadarApp(app.App):
             self.button_states.clear()
             self.view = "radar"
             if self.location_choice == 0:
-                self.setup_stage = "postcode"
+                self._refresh_position(startup=False)
             elif self.location_choice == 1:
+                self.setup_stage = "postcode"
+            else:
                 self.pending_lat = None
                 self.setup_stage = "lat"
-            else:
-                self._refresh_position(startup=False)
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
             self.view = "radar"
@@ -871,6 +886,8 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 7
         if self.location_source == "gps":
             ctx.rgb(*GPS_TEXT).move_to(-105, -88).text("GPS")
+        elif self.location_source == "wifi":
+            ctx.rgb(*CYAN).move_to(-105, -88).text("WIFI")
         elif self.location_source == "manual":
             ctx.rgb(*ALT_TEXT).move_to(-105, -88).text("MAN")
         else:
@@ -941,7 +958,7 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*WHITE)
         title = "SET LOCATION"
         ctx.move_to(-ctx.text_width(title) / 2, -92).text(title)
-        options = ("UK POSTCODE", "COORDINATES", "GPS FIX")
+        options = ("AUTO GPS / WI-FI", "UK POSTCODE", "COORDINATES")
         ctx.font_size = 17
         choice = options[self.location_choice]
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, -18).text(choice)

@@ -12,13 +12,15 @@ The first-run splash remains visible for a few seconds so there is time to scan 
 
 ## Location
 
-Plane Radar checks for a location provider **once when it starts**. It prefers Tildagon's optional Position capability, so a compatible GPS hexpansion can supply the radar centre without any app-specific configuration.
+Plane Radar resolves its centre in this order: **GPS, Wi-Fi estimate, saved manual location**. It first checks Tildagon's optional Position capability, so a compatible GPS hexpansion can supply the radar centre without any app-specific configuration.
 
 For compatibility with older GPS EEPROM firmware, Plane Radar also checks active hexpansion apps for a valid `position` property even when they do not advertise the newer capability.
 
-The chosen location remains fixed while the local radar runs; it does not continuously follow GPS. Press **Down** whenever you want to request a fresh GPS fix. If no new fix is available, the existing radar centre is retained.
+If GPS has no fix, Plane Radar makes one best-effort scan of nearby Wi-Fi access points and asks the public BeaconDB service for an approximate position. BeaconDB requires no API key. The request includes nearby access-point identifiers and signal strengths; it is not made continuously. Estimates broader than 50 km, malformed responses, timeouts, scan failures and service errors are ignored. A failure never erases or replaces the saved manual location.
 
-Press **OK/Confirm** to open the large-text location chooser. Select **UK Postcode**, **Coordinates**, or **GPS Fix** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when no GPS fix is present.
+The chosen location remains fixed while the local radar runs. Press **Down** whenever you want to retry the GPS → Wi-Fi sequence. If neither produces a usable result, the existing radar centre is retained.
+
+Press **OK/Confirm** to open the large-text location chooser. Select **Auto GPS / Wi-Fi**, **UK Postcode**, or **Coordinates** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -29,8 +31,8 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 | Right | Cycle 5 / 10 / 15 / 25 km range |
 | Left | Refresh aircraft immediately |
 | Up | Toggle kilometres / miles |
-| Down | Request a new GPS position |
-| OK / Confirm | Choose postcode, coordinates or GPS location setup |
+| Down | Retry GPS, then Wi-Fi positioning |
+| OK / Confirm | Choose automatic, postcode or coordinate location setup |
 | Left + Right | Open Follow Flight without a keyboard |
 | Cancel / Back | Minimise Plane Radar |
 
@@ -172,7 +174,7 @@ python -m unittest discover -s tests -v
 The app source can also be syntax checked with standard Python:
 
 ```sh
-python -m py_compile app.py radar_base.py postcode.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
+python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
 ```
 
 ## Publishing
