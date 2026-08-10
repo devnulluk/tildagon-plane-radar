@@ -130,6 +130,7 @@ class PlaneRadarApp(app.App):
         self.setup_stage = None
         self.pending_lat = None
         self.location_choice = 0
+        self.pending_location_seed = ""
         self.location_notice = None
         self.location_notice_detail = None
         self.location_notice_elapsed = 0
@@ -308,6 +309,9 @@ class PlaneRadarApp(app.App):
             on_complete=self._complete_location,
             on_cancel=self._cancel_location,
         )
+        if self.pending_location_seed:
+            self.dialog.text = self.pending_location_seed
+            self.pending_location_seed = ""
 
     def _refresh_position(self, startup=False):
         """Try GPS, then Wi-Fi; retain the saved manual centre on failure."""
@@ -705,9 +709,17 @@ class PlaneRadarApp(app.App):
 
         if self.location_notice is not None:
             self.location_notice_elapsed += delta
-            if (
+            confirm = self.button_states.get(BUTTON_TYPES["CONFIRM"])
+            if confirm and (self.center_lat is None or self.center_lon is None):
+                # On a failed startup, OK is an action, not merely a dismiss:
+                # go directly to the useful manual postcode fallback.
+                self.location_notice = None
+                self.location_notice_detail = None
+                self.setup_stage = "postcode"
+                self.button_states.clear()
+            elif (
                 self.location_notice_elapsed >= LOCATION_NOTICE_MS
-                or self.button_states.get(BUTTON_TYPES["CONFIRM"])
+                or confirm
                 or self.button_states.get(BUTTON_TYPES["CANCEL"])
             ):
                 self.location_notice = None
@@ -741,8 +753,11 @@ class PlaneRadarApp(app.App):
             self._refresh_position(startup=False)
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
-            self.location_choice = 0
-            self.view = "location_setup"
+            if self.center_lat is None or self.center_lon is None:
+                self.setup_stage = "postcode"
+            else:
+                self.location_choice = 0
+                self.view = "location_setup"
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
@@ -1029,13 +1044,13 @@ class PlaneRadarApp(app.App):
         ctx.move_to(-ctx.text_width(line) / 2, -34).text(line)
         ctx.font_size = 12
         ctx.rgb(*GPS_TEXT)
-        line = "DOWN: TRY AUTO"
+        line = "OK / ENTER"
         ctx.move_to(-ctx.text_width(line) / 2, 8).text(line)
-        line = "OK: SET MANUAL"
+        line = "TYPE POSTCODE"
         ctx.move_to(-ctx.text_width(line) / 2, 32).text(line)
         ctx.font_size = 10
         ctx.rgb(*ALT_TEXT)
-        line = "BACK: EXIT"
+        line = "DOWN: RETRY AUTO"
         ctx.move_to(-ctx.text_width(line) / 2, 63).text(line)
 
     def _status_lines(self, ctx, text, max_width=140):

@@ -62,6 +62,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.pending_flight_open = False
         self.pending_flight_seed = ""
         self.keyboard_confirm_pending = False
+        self.pending_manual_open = False
         self.keeb_lights = KeebDeckLights(self)
         self._keyboard_handler = self._handle_keyboard_down
         eventbus.on(ButtonDownEvent, self._keyboard_handler, self)
@@ -81,6 +82,12 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if key is None:
             return
         name = getattr(key, "name", "")
+        if self.center_lat is None or self.center_lon is None:
+            if name == "ENTER" or (len(name) == 1 and name.isalnum()):
+                self.pending_manual_open = True
+                self.pending_location_seed = "" if name == "ENTER" else name.upper()
+                self.keyboard_confirm_pending = True
+            return
         if name == "ENTER":
             self.pending_flight_open = True
             self.pending_flight_seed = ""
@@ -365,6 +372,15 @@ class PlaneRadarApp(base.PlaneRadarApp):
         return False
 
     def update(self, delta):
+        if self.pending_manual_open and self.dialog is None:
+            self.pending_manual_open = False
+            self.pending_flight_open = False
+            self.keyboard_confirm_pending = False
+            self.location_notice = None
+            self.location_notice_detail = None
+            self.setup_stage = "postcode"
+            self.button_states.clear()
+
         if self.pending_flight_open and self.dialog is None and self.view == "radar":
             seed = self.pending_flight_seed
             self.pending_flight_open = False

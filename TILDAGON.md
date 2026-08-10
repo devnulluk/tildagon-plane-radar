@@ -24,7 +24,7 @@ Startup and manual refresh results temporarily take over the display in large te
 
 Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
-When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page with large instructions for automatic retry, manual setup and exit.
+When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. OK or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
 Press **OK/Confirm** to open the large-text location chooser. Select **Auto GPS / Wi-Fi**, **UK Postcode**, or **Coordinates** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
