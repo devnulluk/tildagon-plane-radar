@@ -20,13 +20,13 @@ If GPS has no fix, Plane Radar checks the existing MicroPython station first and
 
 The chosen location remains fixed while the local radar runs. Press **Down** whenever you want to retry the GPS → Wi-Fi sequence. If neither produces a usable result, the existing radar centre is retained.
 
-Startup and manual refresh results temporarily take over the display in large text. The result closes automatically after a few seconds, or immediately with OK, revealing the populated radar underneath.
+Startup and manual refresh results temporarily take over the display in large text. Wi-Fi estimates broader than 5 km pause on a full-screen warning so you can continue with the rough centre or choose manual setup. Other results close automatically after a few seconds, or immediately with OK, revealing the populated radar underneath.
 
 Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. OK or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **OK/Confirm** to open the large-text location chooser. Select **Auto GPS / Wi-Fi**, **UK Postcode**, or **Coordinates** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **OK/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, or **LED Sweep: On/Off** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -34,7 +34,7 @@ These controls work on both 2024 Tildagon and 2026 Spaceagon. The Spaceagon joys
 
 | Control | Action |
 |---|---|
-| Right | Cycle 5 / 10 / 15 / 25 km range |
+| Right | Cycle 2 / 5 / 10 / 15 km range |
 | Left | Refresh aircraft immediately |
 | Up | Toggle kilometres / miles |
 | Down | Retry GPS, then Wi-Fi positioning |
@@ -90,7 +90,7 @@ While Plane Radar is foregrounded it temporarily takes control of Tildagon's 12 
 
 In normal/local radar mode:
 
-- a green sweep rotates clockwise around the badge;
+- an optional green sweep rotates clockwise around the badge (toggle it from Radar Options);
 - aircraft illuminate the LED sector matching their bearing on the radar;
 - closer in-range aircraft appear brighter red/magenta;
 - off-scale aircraft remain visible as dim magenta bearing cues;

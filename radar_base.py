@@ -53,7 +53,7 @@ except ImportError:
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
 RIM_RADIUS = 108
-RING_LABELS_KM = (5, 10, 15, 25)
+RING_LABELS_KM = (2, 5, 10, 15)
 DEFAULT_RANGE_INDEX = 1
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
@@ -62,6 +62,7 @@ NORMAL_SPLASH_MS = 1800
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
 LOCATION_NOTICE_MS = 4500
+COARSE_LOCATION_METRES = 5000
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
     "lat": None,
@@ -71,6 +72,7 @@ DEFAULT_CONFIG = {
     "intro_seen": False,
     "heading_up": False,
     "compass_zero": None,
+    "led_sweep": True,
 }
 
 BACKGROUND = (0.01, 0.025, 0.07)
@@ -134,6 +136,9 @@ class PlaneRadarApp(app.App):
         self.location_notice = None
         self.location_notice_detail = None
         self.location_notice_elapsed = 0
+        self.location_warning = False
+        self.location_warning_choice = 0
+        self.wifi_accuracy = None
 
         self.spaceagon = is_spaceagon()
         self.heading_up = bool(self.config.get("heading_up", False)) and self.spaceagon
@@ -160,6 +165,7 @@ class PlaneRadarApp(app.App):
 
         self.led_elapsed = LED_UPDATE_MS
         self.sweep_led = 1
+        self.led_sweep = bool(self.config.get("led_sweep", True))
         self.leds_active = False
         self._acquire_leds()
 
@@ -180,6 +186,7 @@ class PlaneRadarApp(app.App):
                 "use_miles": self.use_miles,
                 "heading_up": self.heading_up,
                 "compass_zero": self.compass_zero,
+                "led_sweep": self.led_sweep,
             }
         )
         _save_config(self.config)
@@ -334,10 +341,16 @@ class PlaneRadarApp(app.App):
             self.center_lon = lon
             self.location_source = "wifi"
             self.location_provider = "BeaconDB"
+            self.wifi_accuracy = accuracy
             self.status = "Wi-Fi ~{}m".format(int(round(accuracy)))
-            self._show_location_notice(
-                "WI-FI LOCATION", "ABOUT {}m".format(int(round(accuracy)))
-            )
+            if accuracy >= COARSE_LOCATION_METRES:
+                self.location_warning = True
+                self.location_warning_choice = 0
+                self.location_notice = None
+            else:
+                self._show_location_notice(
+                    "WI-FI LOCATION", "ABOUT {}m".format(int(round(accuracy)))
+                )
             self.poll_elapsed = POLL_INTERVAL_MS
             return True
 
@@ -543,13 +556,14 @@ class PlaneRadarApp(app.App):
             return
 
         frame = [(0, 0, 0) for _ in range(12)]
-        for offset, colour in (
-            (0, (0, 52, 12)),
-            (-1, (0, 18, 5)),
-            (-2, (0, 6, 2)),
-        ):
-            index = (self.sweep_led - 1 + offset) % 12
-            frame[index] = max_rgb(frame[index], colour)
+        if self.led_sweep:
+            for offset, colour in (
+                (0, (0, 52, 12)),
+                (-1, (0, 18, 5)),
+                (-2, (0, 6, 2)),
+            ):
+                index = (self.sweep_led - 1 + offset) % 12
+                frame[index] = max_rgb(frame[index], colour)
 
         display_heading = self._display_heading()
         if self.center_lat is not None and self.center_lon is not None:
@@ -656,10 +670,10 @@ class PlaneRadarApp(app.App):
 
     def _handle_location_setup_input(self):
         if self.button_states.get(BUTTON_TYPES["LEFT"]):
-            self.location_choice = (self.location_choice - 1) % 3
+            self.location_choice = (self.location_choice - 1) % 4
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["RIGHT"]):
-            self.location_choice = (self.location_choice + 1) % 3
+            self.location_choice = (self.location_choice + 1) % 4
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self.button_states.clear()
@@ -668,9 +682,13 @@ class PlaneRadarApp(app.App):
                 self._refresh_position(startup=False)
             elif self.location_choice == 1:
                 self.setup_stage = "postcode"
-            else:
+            elif self.location_choice == 2:
                 self.pending_lat = None
                 self.setup_stage = "lat"
+            else:
+                self.led_sweep = not self.led_sweep
+                self._persist_preferences()
+                self.status = "LED sweep " + ("on" if self.led_sweep else "off")
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
             self.view = "radar"
@@ -699,6 +717,23 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "location_setup":
             self._handle_location_setup_input()
+            return
+
+        if self.location_warning:
+            if self.button_states.get(BUTTON_TYPES["LEFT"]):
+                self.location_warning_choice = 0
+                self.button_states.clear()
+            elif self.button_states.get(BUTTON_TYPES["RIGHT"]):
+                self.location_warning_choice = 1
+                self.button_states.clear()
+            elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
+                self.button_states.clear()
+                self.location_warning = False
+                if self.location_warning_choice == 1:
+                    self.location_choice = 1
+                    self.view = "location_setup"
+                else:
+                    self.poll_elapsed = POLL_INTERVAL_MS
             return
 
         # Let the splash render first, then wait for Wi-Fi and run the complete
@@ -1000,9 +1035,14 @@ class PlaneRadarApp(app.App):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
         ctx.font_size = 20
         ctx.rgb(*WHITE)
-        title = "SET LOCATION"
+        title = "RADAR OPTIONS"
         ctx.move_to(-ctx.text_width(title) / 2, -92).text(title)
-        options = ("AUTO GPS / WI-FI", "UK POSTCODE", "COORDINATES")
+        options = (
+            "AUTO GPS / WI-FI",
+            "UK POSTCODE",
+            "COORDINATES",
+            "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
+        )
         ctx.font_size = 17
         choice = options[self.location_choice]
         ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, -18).text(choice)
@@ -1014,6 +1054,27 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 9
         hint = "BACK TO CANCEL"
         ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 83).text(hint)
+
+    def _draw_location_warning(self, ctx):
+        ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.rgb(*YELLOW).arc(0, 0, 102, 0, 2 * math.pi, True).stroke()
+        ctx.font_size = 18
+        ctx.rgb(*YELLOW)
+        title = "ROUGH LOCATION"
+        ctx.move_to(-ctx.text_width(title) / 2, -70).text(title)
+        ctx.font_size = 13
+        ctx.rgb(*WHITE)
+        detail = "ABOUT {}km".format(int(round((self.wifi_accuracy or 0) / 1000.0)))
+        ctx.move_to(-ctx.text_width(detail) / 2, -35).text(detail)
+        ctx.font_size = 11
+        hint = "LEFT / RIGHT"
+        ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, 4).text(hint)
+        ctx.font_size = 16
+        choice = "CONTINUE" if self.location_warning_choice == 0 else "MANUAL"
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(choice) / 2, 34).text(choice)
+        ctx.font_size = 10
+        hint = "OK TO SELECT"
+        ctx.rgb(*WHITE).move_to(-ctx.text_width(hint) / 2, 65).text(hint)
 
     def _draw_location_notice(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1099,6 +1160,11 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "location_setup":
             self._draw_location_setup(ctx)
+            ctx.restore()
+            return
+
+        if self.location_warning:
+            self._draw_location_warning(ctx)
             ctx.restore()
             return
 
