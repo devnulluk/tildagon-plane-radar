@@ -100,6 +100,13 @@ YELLOW = (1.0, 0.78, 0.12)
 ALT_TEXT = (0.72, 0.75, 0.82)
 GPS_TEXT = (0.25, 1.0, 0.45)
 CYAN = (0.2, 0.82, 1.0)
+AIRCRAFT_COLOURS = (
+    (0.25, 1.0, 0.15),
+    (1.0, 0.18, 0.86),
+    (0.12, 0.78, 1.0),
+    (1.0, 0.86, 0.12),
+    (1.0, 0.42, 0.12),
+)
 
 
 def _load_config():
@@ -703,6 +710,11 @@ class PlaneRadarApp(app.App):
     def _aircraft_key(self, item):
         return item.get("icao") or item.get("callsign")
 
+    def _aircraft_colour(self, item):
+        key = self._aircraft_key(item) or "?"
+        index = sum(ord(char) for char in key) % len(AIRCRAFT_COLOURS)
+        return AIRCRAFT_COLOURS[index]
+
     def _update_aircraft_trails(self):
         active = set()
         for item in self.aircraft:
@@ -948,6 +960,7 @@ class PlaneRadarApp(app.App):
         if point is None:
             return
         x, y, distance = point
+        colour = self._aircraft_colour(item)
 
         if distance > self.outer_km:
             east, north, _ = offset_km(
@@ -957,7 +970,7 @@ class PlaneRadarApp(app.App):
             if self.heading_up and self.compass_heading is not None:
                 x, y = rotate_screen_xy(x, y, self.compass_heading)
             ctx.rgb(*BACKGROUND).arc(x, y, 4.2, 0, 2 * math.pi, True).fill()
-            ctx.rgb(*RED).arc(x, y, 3.1, 0, 2 * math.pi, True).fill()
+            ctx.rgb(*colour).arc(x, y, 3.1, 0, 2 * math.pi, True).fill()
             return
 
         trail = self.aircraft_trails.get(self._aircraft_key(item), [])
@@ -970,7 +983,7 @@ class PlaneRadarApp(app.App):
                 screen_trail.append(trail_point[:2])
         for index in range(1, len(screen_trail)):
             alpha = 0.12 + (0.48 * index / max(1, len(screen_trail) - 1))
-            ctx.rgba(MAGENTA[0], MAGENTA[1], MAGENTA[2], alpha)
+            ctx.rgba(colour[0], colour[1], colour[2], alpha)
             ctx.begin_path()
             ctx.move_to(*screen_trail[index - 1])
             ctx.line_to(*screen_trail[index])
@@ -982,7 +995,7 @@ class PlaneRadarApp(app.App):
         vdx, vdy = heading_vector(
             relative_bearing(item.get("track", 0.0), display_heading), vector_len
         )
-        ctx.rgb(*MAGENTA)
+        ctx.rgb(*colour)
         ctx.line_width = 1.5
         ctx.begin_path()
         ctx.move_to(x, y)
@@ -997,7 +1010,7 @@ class PlaneRadarApp(app.App):
         rdy = fdx * 0.7
         bx = x - fdx * 0.8
         by = y - fdy * 0.8
-        ctx.rgb(*RED).begin_path()
+        ctx.rgb(*colour).begin_path()
         ctx.move_to(x + fdx, y + fdy)
         ctx.line_to(bx + rdx, by + rdy)
         ctx.line_to(bx - rdx, by - rdy)
@@ -1010,13 +1023,13 @@ class PlaneRadarApp(app.App):
             ctx.arc(x, y, 8, 0, 2 * math.pi, True).stroke()
             ctx.line_width = 1
 
-        return x, y
+        return x, y, colour
 
     def _draw_aircraft_labels(self, ctx, aircraft_points):
         """Place large callsigns around aircraft with minimal overlap."""
         occupied = []
         ctx.font_size = AIRCRAFT_LABEL_SIZE
-        for item, x, y in aircraft_points:
+        for item, x, y, colour in aircraft_points:
             label = item.get("callsign", "")
             if not label:
                 continue
@@ -1049,14 +1062,15 @@ class PlaneRadarApp(app.App):
 
             link_x = min(max(x, box[0]), box[2])
             link_y = min(max(y, box[1]), box[3])
-            ctx.rgb(*WHITE).begin_path()
+            ctx.rgb(*colour).begin_path()
             ctx.move_to(x, y).line_to(link_x, link_y).stroke()
             ctx.rgba(0, 0, 0, 0.82).rectangle(
                 box[0], box[1], box[2] - box[0], box[3] - box[1]
             ).fill()
-            ctx.rgb(*WHITE).rectangle(
+            ctx.rgb(*colour).rectangle(
                 box[0], box[1], box[2] - box[0], box[3] - box[1]
             ).stroke()
+            ctx.rgb(*colour)
             ctx.move_to(tx, ty).text(label)
 
     def _distance_text(self, distance_km):
@@ -1144,16 +1158,16 @@ class PlaneRadarApp(app.App):
 
     def _draw_instructions(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
-        ctx.font_size = 13
+        ctx.font_size = 12
         ctx.rgb(*WHITE)
         title = "PLANE RADAR HELP"
-        ctx.move_to(-ctx.text_width(title) / 2, -108).text(title)
-        ctx.font_size = 8
-        text = "Scan for controls & setup"
-        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(text) / 2, -91).text(text)
-        draw_qr(ctx, 0, -12, 3)
-        ctx.font_size = 8
-        hint = "PRESS C / BACK"
+        ctx.move_to(-ctx.text_width(title) / 2, -88).text(title)
+        ctx.font_size = 9
+        text = "CONTROLS & SETUP"
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(text) / 2, -70).text(text)
+        draw_qr(ctx, 0, 7, 3)
+        ctx.font_size = 9
+        hint = "PRESS C TO CLOSE"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 92).text(hint)
 
     def _draw_location_setup(self, ctx):
@@ -1309,7 +1323,7 @@ class PlaneRadarApp(app.App):
             for item in self.aircraft:
                 point = self._draw_aircraft(ctx, item)
                 if point is not None:
-                    aircraft_points.append((item, point[0], point[1]))
+                    aircraft_points.append((item, point[0], point[1], point[2]))
             self._draw_aircraft_labels(ctx, aircraft_points)
         self._draw_location_source(ctx)
         self._draw_selection(ctx)

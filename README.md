@@ -1,5 +1,11 @@
 # Plane Radar
 
+> **Tildagon port:** Plane Radar was created by
+> [MatixYo](https://github.com/MatixYo). This repository includes a Tildagon
+> edition adapted by Mark Brown with assistance from OpenAI Codex. Thank you
+> to MatixYo for sharing the original project under the MIT licence. See
+> [TILDAGON.md](TILDAGON.md) for the badge edition and full acknowledgements.
+
 <img width="800" height="450" alt="plane-radar" src="https://github.com/user-attachments/assets/716d0992-dab8-47ba-8f1a-2aec7f607419" />
 
 **3D printed case (STL + assembly):** [MakerWorld](https://makerworld.com/en/models/2872376-esp32-plane-radar-live-ads-b-on-a-round-display#profileId-3207083) · **Firmware:** [Releases](https://github.com/MatixYo/ESP32-Plane-Radar/releases)

@@ -199,4 +199,16 @@ Network requests currently use Tildagon's synchronous `requests` module, so a sl
 
 ## Data and attribution
 
-Original Plane Radar project: **MatixYo/ESP32-Plane-Radar**, MIT licensed. This port retains the same licence and uses adsb.fi for live aircraft data. Follow Flight additionally uses adsb.lol/VRS standing route data when available to resolve origin and destination metadata.
+Plane Radar was created by **MatixYo**. This Tildagon edition is a port of
+[MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar),
+shared under the MIT licence. We are grateful to MatixYo for making the
+original project available for others to enjoy, learn from and adapt. The
+original copyright and licence notice remain in [`LICENSE`](LICENSE).
+
+The Tildagon port was adapted by **Mark Brown**, with design, implementation,
+testing and documentation assistance from **OpenAI Codex**. AI assistance does
+not replace or diminish the original project's authorship or licence.
+
+Live aircraft data comes from adsb.fi. Follow Flight additionally uses
+adsb.lol/VRS standing route data when available to resolve origin and
+destination metadata. Location lookups may use BeaconDB and Postcodes.io.
