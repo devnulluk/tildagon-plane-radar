@@ -16,11 +16,13 @@ Plane Radar resolves its centre in this order: **GPS, Wi-Fi estimate, saved manu
 
 For compatibility with older GPS EEPROM firmware, Plane Radar also checks active hexpansion apps for a valid `position` property even when they do not advertise the newer capability.
 
-If GPS has no fix, Plane Radar waits for Tildagon's saved Wi-Fi connection, makes one best-effort scan of nearby access points and asks the public BeaconDB service for an approximate position. BeaconDB requires no API key. The request includes nearby access-point identifiers and signal strengths; it is not made continuously. Estimates broader than 50 km, malformed responses, timeouts, scan failures and service errors are ignored. A failure never erases or replaces the saved manual location.
+If GPS has no fix, Plane Radar waits briefly for the standard MicroPython Wi-Fi station connection, makes one best-effort scan of nearby access points and asks the public BeaconDB service for an approximate position. BeaconDB requires no API key. The request includes nearby access-point identifiers and signal strengths; it is not made continuously. Estimates broader than 50 km, malformed responses, timeouts, scan failures and service errors are ignored. A failure never erases or replaces the saved manual location.
 
 The chosen location remains fixed while the local radar runs. Press **Down** whenever you want to retry the GPS → Wi-Fi sequence. If neither produces a usable result, the existing radar centre is retained.
 
 Startup and manual refresh results temporarily take over the display in large text. The result closes automatically after a few seconds, or immediately with OK, revealing the populated radar underneath.
+
+Ongoing radar status is shown in a high-contrast, one- or two-line card at the bottom rather than the original tiny status text.
 
 Press **OK/Confirm** to open the large-text location chooser. Select **Auto GPS / Wi-Fi**, **UK Postcode**, or **Coordinates** with Left/Right and press OK. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 

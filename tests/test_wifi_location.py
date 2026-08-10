@@ -2,10 +2,20 @@ import sys
 import types
 import unittest
 
-from wifi_location import build_wifi_payload, get_wifi_position, parse_beacondb_response
+from wifi_location import (
+    build_wifi_payload,
+    get_wifi_position,
+    parse_beacondb_response,
+    wait_for_connection,
+)
 
 
 class WiFiLocationTests(unittest.TestCase):
+    def test_connection_wait_uses_wlan_state_without_system_wifi(self):
+        states = iter((False, False, True))
+        station = types.SimpleNamespace(isconnected=lambda: next(states))
+        self.assertTrue(wait_for_connection(station, attempts=3, delay_ms=0))
+
     def test_scan_payload_filters_local_addresses_and_sorts_by_signal(self):
         rows = [
             (b"weak", bytes((0x10, 1, 2, 3, 4, 5)), 1, -80, 0, False),
@@ -32,6 +42,7 @@ class WiFiLocationTests(unittest.TestCase):
 
     def test_service_failure_returns_none_and_preserves_control_flow(self):
         station = types.SimpleNamespace(
+            isconnected=lambda: True,
             scan=lambda: [
                 (b"ap", bytes((0x20, 1, 2, 3, 4, 7)), 1, -35, 0, False)
             ]
@@ -41,11 +52,7 @@ class WiFiLocationTests(unittest.TestCase):
             WLAN=lambda unused: station,
         )
         original_network = sys.modules.get("network")
-        original_system = sys.modules.get("system")
         sys.modules["network"] = fake_network
-        fake_system = types.ModuleType("system")
-        fake_system.wifi = types.SimpleNamespace(wait=lambda: True)
-        sys.modules["system"] = fake_system
         try:
             failing_requests = types.SimpleNamespace(
                 post=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("down"))
@@ -56,7 +63,3 @@ class WiFiLocationTests(unittest.TestCase):
                 del sys.modules["network"]
             else:
                 sys.modules["network"] = original_network
-            if original_system is None:
-                del sys.modules["system"]
-            else:
-                sys.modules["system"] = original_system

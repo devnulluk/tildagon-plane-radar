@@ -1,5 +1,6 @@
 """Best-effort Wi-Fi positioning through the public BeaconDB endpoint."""
 import json
+import time
 
 BEACONDB_URL = "https://api.beacondb.net/v1/geolocate"
 MAX_ACCESS_POINTS = 12
@@ -52,21 +53,36 @@ def parse_beacondb_response(payload, max_accuracy=MAX_ACCURACY_METRES):
     return lat, lon, accuracy
 
 
+def wait_for_connection(station, attempts=24, delay_ms=250):
+    """Wait briefly for the existing station connection without OS helpers."""
+    for unused in range(attempts):
+        try:
+            if station.isconnected():
+                return True
+        except Exception:
+            return False
+        if delay_ms:
+            sleeper = getattr(time, "sleep_ms", None)
+            if sleeper is not None:
+                sleeper(delay_ms)
+            else:
+                time.sleep(delay_ms / 1000.0)
+    return False
+
+
 def get_wifi_position(requests_module, timeout=6):
     """Scan once and query BeaconDB; return None on every failure mode."""
     response = None
     try:
         import network
-        from system import wifi
-
-        # Startup may reach us before Tildagon has finished reconnecting.
-        if not wifi.wait():
-            return None
 
         station_id = getattr(network, "STA_IF", None)
         if station_id is None:
             station_id = network.WLAN.IF_STA
-        payload = build_wifi_payload(network.WLAN(station_id).scan())
+        station = network.WLAN(station_id)
+        if not wait_for_connection(station):
+            return None
+        payload = build_wifi_payload(station.scan())
         if not payload["wifiAccessPoints"]:
             return None
         response = requests_module.post(

@@ -1015,6 +1015,39 @@ class PlaneRadarApp(app.App):
         hint = "OK TO CONTINUE"
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(hint) / 2, 66).text(hint)
 
+    def _status_lines(self, ctx, text, max_width=184):
+        words = str(text).split()
+        lines = []
+        current = ""
+        for word in words:
+            candidate = word if not current else current + " " + word
+            if (
+                not lines
+                and current
+                and ctx.text_width(candidate) > max_width
+            ):
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current and len(lines) < 2:
+            lines.append(current)
+        if len(lines) == 2:
+            while ctx.text_width(lines[1]) > max_width and len(lines[1]) > 3:
+                lines[1] = lines[1][:-4].rstrip() + "..."
+        return lines
+
+    def _draw_status_card(self, ctx):
+        ctx.font_size = 11
+        lines = self._status_lines(ctx, self.status)
+        height = 21 if len(lines) == 1 else 35
+        top = 112 - height
+        ctx.rgba(0, 0, 0, 0.86).rectangle(-100, top, 200, height).fill()
+        ctx.rgb(*YELLOW)
+        start_y = top + (14 if len(lines) == 1 else 13)
+        for index, line in enumerate(lines):
+            ctx.move_to(-ctx.text_width(line) / 2, start_y + index * 14).text(line)
+
     def draw(self, ctx):
         ctx.save()
         if self.view == "splash":
@@ -1039,10 +1072,7 @@ class PlaneRadarApp(app.App):
         if self.location_notice is not None:
             self._draw_location_notice(ctx)
         if self.status and self.location_notice is None:
-            ctx.font_size = 8
-            ctx.rgb(*YELLOW)
-            width = ctx.text_width(self.status)
-            ctx.move_to(-width / 2, 95).text(self.status)
+            self._draw_status_card(ctx)
         ctx.restore()
         if self.dialog is not None:
             self.dialog.draw(ctx)
