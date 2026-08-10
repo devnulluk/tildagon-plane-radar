@@ -10,7 +10,7 @@ class = "PlaneRadarApp"
 author = "devnulluk"
 license = "MIT"
 url = "https://github.com/devnulluk/tildagon-plane-radar"
-description = "Live aircraft radar for the Tildagon badge, powered by ADS-B data from adsb.fi. Port of ESP32-Plane-Radar."
+description = "Live aircraft radar with flexible location, flight following, fading trails and LED alerts."
 version = "0.1.0"
 
 [[metadata.capabilities]]

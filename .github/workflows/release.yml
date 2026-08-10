@@ -1,5 +1,5 @@
-# Tag a release (v1.0.0) to attach firmware to GitHub Releases.
-name: Release
+# A GitHub Release makes the tagged source available to the Tildagon App Store.
+name: Tildagon release
 
 on:
   push:
@@ -17,45 +17,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio/.cache
-            .pio/libdeps
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      - name: Build and merge
+      - name: Validate tag and app
+        if: github.event_name == 'push'
         run: |
-          pio run -e supermini
-          pio run -t merge -e supermini
+          python - <<'PY'
+          import pathlib
+          import tomllib
 
-      - name: Package release files
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="manual-${GITHUB_SHA::7}"
-          fi
-          mkdir -p dist
-          cp .pio/build/supermini/firmware-merged.bin "dist/plane-radar-${VERSION}.bin"
-          sha256sum "dist/plane-radar-${VERSION}.bin" > "dist/plane-radar-${VERSION}.bin.sha256"
-          echo "version=${VERSION}" >> "$GITHUB_ENV"
+          metadata = tomllib.loads(pathlib.Path("tildagon.toml").read_text())
+          expected = "v" + metadata["metadata"]["version"]
+          actual = "${{ github.ref_name }}"
+          if actual != expected:
+              raise SystemExit(f"release tag {actual!r} must match {expected!r}")
+          PY
+          python -m unittest discover -s tests -v
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

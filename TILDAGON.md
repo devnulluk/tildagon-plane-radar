@@ -201,11 +201,22 @@ The app source can also be syntax checked with standard Python:
 python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_app.py adsb.py flight_follow.py keebdeck.py radar_math.py location_provider.py led_radar.py spaceagon.py instructions_qr.py
 ```
 
-## Publishing
+## App Store package
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Before the first app-store release, add the repository topic `tildagon-app` and create a release/tag matching the metadata version (initially `v0.1.0`).
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.0` is published as `v0.1.0`.
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
+
+### Replacing a manually copied test version
+
+If Plane Radar was previously copied to `/apps/plane_radar` with `mpremote`, remove that development folder before installing the App Store version:
+
+```powershell
+python -m mpremote connect COM6 fs rm -r :/apps/plane_radar
+python -m mpremote connect COM6 reset
+```
+
+This removes only the manually copied app folder. Plane Radar's saved settings are held by Tildagon's settings service and are left intact. After the reset, install Plane Radar normally from the App Store.
 
 ## Current differences from the ESP32-C3 firmware
 
