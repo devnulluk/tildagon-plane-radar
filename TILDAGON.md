@@ -50,7 +50,7 @@ Plane Radar can leave your local position and follow a particular aircraft anywh
 
 ### Keepdexpansion input
 
-The Keepdexpansion is optional. If it is fitted and its keyboard app is running, **simply start typing a flight number or ADS-B callsign while the radar is visible**. Plane Radar opens the flight-search dialog and keeps the first character you typed. Pressing **Enter** with no preceding character opens an empty flight-search dialog.
+The Keepdexpansion is optional. If it is fitted and its keyboard app is running, **simply start typing a flight number or ADS-B callsign while the radar is visible**. Plane Radar opens the flight-search dialog and keeps the first character you typed. Enter remains equivalent to physical C for menus and location setup. Press Escape or physical F to close flight search.
 
 Without a Keepdexpansion, press **Left + Right together** and enter the same value with Tildagon's normal text dialog.
 

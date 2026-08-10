@@ -61,6 +61,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.pending_follow_query = None
         self.pending_flight_open = False
         self.pending_flight_seed = ""
+        self.pending_flight_cancel = False
         self.keyboard_confirm_pending = False
         self.pending_manual_open = False
         self.pending_location_submit = False
@@ -85,6 +86,8 @@ class PlaneRadarApp(base.PlaneRadarApp):
             if self.setup_stage is not None and name == "ENTER":
                 self.pending_location_submit = True
                 self.keyboard_confirm_pending = True
+            elif self.setup_stage is None and name in ("ESC", "ESCAPE"):
+                self.pending_flight_cancel = True
             return
         if self.view != "radar":
             return
@@ -95,9 +98,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
                 self.keyboard_confirm_pending = True
             return
         if name == "ENTER":
-            self.pending_flight_open = True
-            self.pending_flight_seed = ""
-            self.keyboard_confirm_pending = True
+            # Let the keyboard's generic CONFIRM alias behave exactly like
+            # physical C. Flight search still opens as soon as a callsign is
+            # typed, without stealing Enter from Radar Options.
             return
         if len(name) == 1 and name.isalnum():
             self.pending_flight_open = True
@@ -127,7 +130,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.pending_follow_query = query
 
     def _cancel_flight_dialog(self):
-        self.dialog = None
+        self._dialog_cleanup()
         self.status = "Flight search cancelled"
 
     def _get_json(self, url):
@@ -378,6 +381,15 @@ class PlaneRadarApp(base.PlaneRadarApp):
         return False
 
     def update(self, delta):
+        if self.pending_flight_cancel or (
+            self.dialog is not None
+            and self.setup_stage is None
+            and self.button_states.get(BUTTON_TYPES["CANCEL"])
+        ):
+            self.pending_flight_cancel = False
+            self.button_states.clear()
+            self._cancel_flight_dialog()
+
         if self.pending_location_submit:
             self.pending_location_submit = False
             self.keyboard_confirm_pending = False
