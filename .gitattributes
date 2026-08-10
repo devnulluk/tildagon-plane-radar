@@ -1,0 +1,15 @@
+# Tildagon app-store release archives only need the MicroPython port.
+# Keep the original ESP32-C3 firmware in the fork, but exclude it from the
+# badge download generated from a release.
+.github/ export-ignore
+.vscode/ export-ignore
+data/ export-ignore
+include/ export-ignore
+partitions/ export-ignore
+scripts/ export-ignore
+src/ export-ignore
+platformio.ini export-ignore
+README.md export-ignore
+TILDAGON.md export-ignore
+tests/ export-ignore
+metadata.example.json export-ignore

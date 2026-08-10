@@ -4,3 +4,8 @@ release/
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Tildagon / Python development
+__pycache__/
+*.py[cod]
+metadata.json
