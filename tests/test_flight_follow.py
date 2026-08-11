@@ -10,6 +10,7 @@ from flight_follow import (
     parse_route,
     parse_target,
     route_progress,
+    should_end_emergency_follow,
 )
 
 
@@ -30,6 +31,12 @@ class FlightQueryTests(unittest.TestCase):
         self.assertTrue(is_flight_key("7"))
         self.assertFalse(is_flight_key("-"))
         self.assertFalse(is_flight_key("ENTER"))
+
+    def test_real_emergency_ends_after_three_consecutive_feed_misses(self):
+        self.assertFalse(should_end_emergency_follow("7700", False, 2))
+        self.assertTrue(should_end_emergency_follow("7700", False, 3))
+        self.assertFalse(should_end_emergency_follow("7700", True, 99))
+        self.assertFalse(should_end_emergency_follow(None, False, 99))
 
 
 class TargetParsingTests(unittest.TestCase):

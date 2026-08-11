@@ -35,8 +35,11 @@ Plane Radar switches into focused flight-following. The selected aircraft stays
 at the centre, surrounding traffic remains dim and unlabeled, and the radar
 alternates with a full details page. Two opposing red heads and their short
 tails chase continuously around the LED ring, making 7700 visibly different
-from the slower broad military sweep without flashing the whole ring. Press
-Back to return to the local radar.
+from the slower broad military sweep without flashing the whole ring.
+F/Back returns immediately to the local radar. If a real emergency target leaves
+the feed, Plane Radar waits for three consecutive missed target updates to
+avoid reacting to a momentary network gap, then restores the local radar
+automatically. Simulated 7700 demonstrations remain active until dismissed.
 
 For demonstration and testing, type **7700** as a flight/callsign. Plane Radar
 chooses one of the currently visible aircraft, clearly labels the alert as
@@ -88,7 +91,7 @@ Once a target is found, Plane Radar locks onto its Mode-S hex identity and:
 - updates the followed aircraft independently from the surrounding traffic;
 - alternates automatically every **5 seconds** between the radar and a flight-data page.
 
-The focused radar card uses larger, heavier text for its callsign, route, altitude, groundspeed, bearing/track and squawk. The alternating data page uses the same high-legibility treatment and adds the aircraft model/registration, vertical rate, Mode-S hex, route progress and distance remaining when those fields are available from the live feeds.
+The focused radar card uses extra-large, heavier text for its callsign, route, altitude, groundspeed, bearing/track and squawk. The alternating data page is deliberately sparse rather than squeezing in tiny secondary fields: it prioritises callsign, route, model/registration, altitude, speed, bearing, vertical rate, squawk and route progress/distance. Its footer explicitly shows `F: BACK TO RADAR`.
 
 While following:
 
