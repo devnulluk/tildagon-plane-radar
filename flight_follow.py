@@ -4,6 +4,7 @@ import math
 ADSB_CALLSIGN_URL = "https://opendata.adsb.fi/api/v2/callsign/{callsign}"
 ADSB_HEX_URL = "https://opendata.adsb.fi/api/v2/hex/{hex_id}"
 ROUTE_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
+EMERGENCY_MISS_LIMIT = 3
 EARTH_RADIUS_KM = 6371.0088
 
 # Useful passenger-facing IATA prefixes whose ADS-B callsigns normally use a
@@ -25,6 +26,17 @@ def is_flight_key(value):
         isinstance(value, str)
         and len(value) == 1
         and ("A" <= value <= "Z" or "0" <= value <= "9")
+    )
+
+
+def should_end_emergency_follow(
+    emergency_code, simulated, missed_count, miss_limit=EMERGENCY_MISS_LIMIT
+):
+    """End a real emergency focus only after consecutive feed misses."""
+    return bool(
+        emergency_code
+        and not simulated
+        and int(missed_count) >= int(miss_limit)
     )
 
 

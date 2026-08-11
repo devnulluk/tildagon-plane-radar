@@ -21,6 +21,7 @@ try:
         parse_target,
         route_progress,
         route_remaining_km,
+        should_end_emergency_follow,
     )
     from .keebdeck import KeebDeckLights
     from .adsb import build_squawk_url, needs_emergency_focus
@@ -38,6 +39,7 @@ except ImportError:
         parse_target,
         route_progress,
         route_remaining_km,
+        should_end_emergency_follow,
     )
     from keebdeck import KeebDeckLights
     from adsb import build_squawk_url, needs_emergency_focus
@@ -382,6 +384,15 @@ class PlaneRadarApp(base.PlaneRadarApp):
         if target is None:
             self.follow_lost_count += 1
             self.follow_locked = False
+            if should_end_emergency_follow(
+                self.emergency_code,
+                self.emergency_simulated,
+                self.follow_lost_count,
+            ):
+                callsign = self.follow_query or "Emergency aircraft"
+                self._stop_follow()
+                self.status = callsign + " left emergency feed"
+                return False
             self.status = "{} signal lost ({})".format(
                 self.follow_query, self.follow_lost_count
             )
@@ -627,7 +638,8 @@ class PlaneRadarApp(base.PlaneRadarApp):
         x = -ctx.text_width(text) / 2
         ctx.move_to(x, y).text(text)
         if bold:
-            ctx.move_to(x + 0.65, y).text(text)
+            ctx.move_to(x + 0.55, y).text(text)
+            ctx.move_to(x + 1.10, y).text(text)
 
     def _draw_follow_target_center(self, ctx):
         if not self.following:
@@ -671,9 +683,6 @@ class PlaneRadarApp(base.PlaneRadarApp):
         ctx.close_path()
         ctx.fill()
         ctx.line_width = 1
-        ctx.font_size = 13
-        label = self.follow_query or "FOLLOW"
-        self._center_text(ctx, label, 22, bold=True)
 
     def _draw_status_card(self, ctx):
         if not self.following:
@@ -691,16 +700,18 @@ class PlaneRadarApp(base.PlaneRadarApp):
         speed = int(round(float(target.get("speed", 0.0) or 0.0)))
         track = int(round(float(target.get("track", 0.0) or 0.0))) % 360
         third = "{}  {}KT  BRG{:03d}".format(altitude, speed, track)
-        ctx.rgba(0, 0, 0, 0.90).rectangle(-82, 34, 164, 57).fill()
-        ctx.font_size = 13
+        ctx.rgba(0, 0, 0, 0.90).rectangle(-84, 29, 168, 66).fill()
+        ctx.font_size = 17
+        while ctx.text_width(first) > 160 and ctx.font_size > 13:
+            ctx.font_size -= 1
         ctx.rgb(*(base.RED if self.emergency_code else base.CYAN))
-        self._center_text(ctx, first, 51, bold=True)
-        ctx.font_size = 12
+        self._center_text(ctx, first, 48, bold=True)
+        ctx.font_size = 16
         ctx.rgb(*base.GPS_TEXT)
         self._center_text(ctx, second, 70, bold=True)
-        ctx.font_size = 10
+        ctx.font_size = 13
         ctx.rgb(*base.WHITE)
-        self._center_text(ctx, third, 86, bold=True)
+        self._center_text(ctx, third, 91, bold=True)
 
     def _draw_progress_bar(self, ctx, y, width=156, height=7):
         left = -width / 2
@@ -720,28 +731,43 @@ class PlaneRadarApp(base.PlaneRadarApp):
         target = self.follow_target
         emergency = bool(self.emergency_code)
         ctx.rgb(*base.BACKGROUND).rectangle(-120, -120, 240, 240).fill()
-        ctx.font_size = 11
+        ctx.font_size = 14
         ctx.rgb(*(base.RED if emergency else base.CYAN))
         if emergency:
-            prefix = "SIMULATED " if self.emergency_simulated else ""
+            prefix = "SIM " if self.emergency_simulated else ""
             header = prefix + "EMERGENCY " + self.emergency_code
         else:
             header = "FOLLOWING"
-        self._center_text(ctx, header, -91, bold=True)
+        self._center_text(ctx, header, -89, bold=True)
 
-        ctx.font_size = 22
+        ctx.font_size = 29
         ctx.rgb(*(base.WHITE if self.follow_locked else base.RED))
         callsign = self.follow_query or "?"
-        self._center_text(ctx, callsign, -77, bold=True)
+        while ctx.text_width(callsign) > 174 and ctx.font_size > 20:
+            ctx.font_size -= 1
+        self._center_text(ctx, callsign, -64, bold=True)
 
-        ctx.font_size = 11
+        route = self.follow_route
+        ctx.font_size = 20
+        ctx.rgb(*base.YELLOW)
+        if route is not None:
+            route_text = "{} > {}".format(route["origin"], route["destination"])
+        elif emergency:
+            route_text = "PATH UNKNOWN"
+        else:
+            route_text = "ROUTE UNKNOWN"
+        while ctx.text_width(route_text) > 174 and ctx.font_size > 15:
+            ctx.font_size -= 1
+        self._center_text(ctx, route_text, -37, bold=True)
+
+        ctx.font_size = 15
         ctx.rgb(*base.ALT_TEXT)
         identity = target.get("model") or target.get("type") or "MODEL UNKNOWN"
         if target.get("registration"):
             identity += "  " + target["registration"]
-        while ctx.text_width(identity) > 170 and len(identity) > 5:
+        while ctx.text_width(identity) > 174 and len(identity) > 5:
             identity = identity[:-4].rstrip() + "..."
-        self._center_text(ctx, identity, -56, bold=True)
+        self._center_text(ctx, identity, -14, bold=True)
 
         alt_ft = target.get("alt_ft")
         alt_text = "?"
@@ -750,11 +776,11 @@ class PlaneRadarApp(base.PlaneRadarApp):
         elif target.get("alt"):
             alt_text = target["alt"]
         speed = int(round(float(target.get("speed", 0.0) or 0.0)))
-        ctx.font_size = 13
+        ctx.font_size = 17
         ctx.rgb(*base.WHITE)
         line = "ALT {}   GS {}kt".format(alt_text, speed)
-        self._center_text(ctx, line, -38, bold=True)
-        ctx.font_size = 11
+        self._center_text(ctx, line, 9, bold=True)
+        ctx.font_size = 14
         track = int(round(float(target.get("track", 0.0) or 0.0))) % 360
         vertical = target.get("vertical_rate")
         vtext = ""
@@ -762,59 +788,38 @@ class PlaneRadarApp(base.PlaneRadarApp):
             vtext = "  VS {:+d}".format(int(round(vertical)))
         line = "BRG {:03d}{}".format(track, vtext)
         ctx.rgb(*base.ALT_TEXT)
-        self._center_text(ctx, line, -20, bold=True)
+        self._center_text(ctx, line, 31, bold=True)
 
-        route = self.follow_route
-        ctx.font_size = 15
-        ctx.rgb(*base.YELLOW)
-        if route is not None:
-            route_text = "{} > {}".format(route["origin"], route["destination"])
-        elif emergency:
-            route_text = "FLIGHT PATH UNKNOWN"
-        else:
-            route_text = "ROUTE UNKNOWN"
-        self._center_text(ctx, route_text, 2, bold=True)
+        ctx.font_size = 13
+        squawk = target.get("squawk") or "----"
+        ctx.rgb(*(base.RED if emergency else base.ALT_TEXT))
+        self._center_text(ctx, "SQUAWK " + squawk, 51, bold=True)
 
-        self._draw_progress_bar(ctx, 15)
-        ctx.font_size = 10
         if self.follow_progress is not None:
             pct = int(round(self.follow_progress * 100.0))
-            progress_text = "~{}% of route".format(pct)
+            progress_text = "~{}% OF ROUTE".format(pct)
         elif route is not None and not route.get("plausible", True):
-            progress_text = "route unverified"
+            progress_text = "ROUTE UNVERIFIED"
         else:
-            progress_text = "flight plan unavailable"
-        ctx.rgb(*base.WHITE)
-        self._center_text(ctx, progress_text, 38, bold=True)
+            progress_text = "FLIGHT PLAN UNKNOWN"
 
         if self.follow_remaining_km is not None and route is not None:
             remaining = self.follow_remaining_km
             if self.use_miles:
                 remaining /= base.KM_PER_MILE
-                remaining_text = "~{}mi to {}".format(
+                progress_text = "~{}MI TO {}".format(
                     int(round(remaining)), route["destination"]
                 )
             else:
-                remaining_text = "~{}km to {}".format(
+                progress_text = "~{}KM TO {}".format(
                     int(round(remaining)), route["destination"]
                 )
-            ctx.rgb(*base.GPS_TEXT)
-            self._center_text(ctx, remaining_text, 56, bold=True)
+        ctx.rgb(*base.GPS_TEXT)
+        self._center_text(ctx, progress_text, 70, bold=True)
 
-        ctx.font_size = 10
-        sqk = target.get("squawk") or "----"
-        ident = "SQK {}   HEX {}".format(
-            sqk, (target.get("hex") or "?")[:6].upper()
-        )
-        ctx.rgb(*base.ALT_TEXT)
-        self._center_text(ctx, ident, 73, bold=True)
-
-        seconds = max(
-            1, int((FOLLOW_PAGE_MS - self.follow_page_elapsed + 999) / 1000)
-        )
-        footer = "RADAR IN {}s   BACK=STOP".format(seconds)
+        ctx.font_size = 13
         ctx.rgb(*base.YELLOW)
-        self._center_text(ctx, footer, 94, bold=True)
+        self._center_text(ctx, "F: BACK TO RADAR", 94, bold=True)
 
     def _draw_aircraft_list(self, ctx):
         ctx.rgb(*base.BACKGROUND).rectangle(-120, -120, 240, 240).fill()
