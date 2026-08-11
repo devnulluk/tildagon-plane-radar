@@ -1,5 +1,12 @@
 import unittest
-from adsb import build_squawk_url, build_url, classify_aircraft, parse_aircraft
+from adsb import (
+    build_squawk_url,
+    build_url,
+    classify_aircraft,
+    classify_attention,
+    needs_emergency_focus,
+    parse_aircraft,
+)
 
 class AdsbTests(unittest.TestCase):
     def test_url_uses_nautical_miles(self):
@@ -43,3 +50,37 @@ class AdsbTests(unittest.TestCase):
         self.assertEqual(item["category"], "A7")
         self.assertEqual(item["db_flags"], 0)
         self.assertEqual(item["kind"], "helicopter")
+
+    def test_attention_classification_uses_narrow_verified_signals(self):
+        self.assertEqual(classify_attention({"flight": "HLE72"}), "air_ambulance")
+        self.assertEqual(
+            classify_attention({"emergency": "lifeguard"}),
+            "air_ambulance",
+        )
+        self.assertEqual(classify_attention({"flight": "UKP151"}), "police")
+        self.assertEqual(classify_attention({"r": "G-POLB"}), "police")
+        self.assertEqual(classify_attention({"dbFlags": 1}), "military")
+        self.assertEqual(classify_attention({"dbFlags": 2}), "interesting")
+        self.assertEqual(classify_attention({"flight": "BAW123"}), "")
+
+    def test_parser_preserves_compact_interesting_marker(self):
+        item = parse_aircraft({
+            "ac": [{
+                "lat": 51.0,
+                "lon": 0.0,
+                "flight": "HLE72",
+            }]
+        })[0]
+        self.assertEqual(item["attention"], "air_ambulance")
+
+        ordinary = parse_aircraft({
+            "ac": [{"lat": 51.0, "lon": 0.0, "flight": "BAW123"}]
+        })[0]
+        self.assertNotIn("attention", ordinary)
+
+    def test_lifeguard_is_green_attention_not_red_emergency_focus(self):
+        item = {"emergency": "lifeguard"}
+        self.assertEqual(classify_attention(item), "air_ambulance")
+        self.assertFalse(needs_emergency_focus(item))
+        self.assertTrue(needs_emergency_focus({"squawk": "7700"}))
+        self.assertTrue(needs_emergency_focus({"emergency": "general"}))

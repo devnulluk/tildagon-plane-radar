@@ -8,7 +8,7 @@ Plane Radar shows live nearby aircraft from adsb.fi on the badge's round display
 
 Plane Radar opens with an animated radar boot screen. Press **C** while the splash is visible to open the full QR manual screen.
 
-The first-run splash remains visible for five seconds; later launches remain visible for three seconds so there is time to open the manual.
+The first-run splash remains visible for five seconds; later launches remain visible for three seconds. Press **C** for the QR manual or **B/Right** for the animated Traffic Guide. The guide loops through air ambulance, police, military and database-marked interesting traffic, then ends with a clearly simulated 7700 focus. Each chapter has a moving example, its display symbol, an explanatory card and the matching LED animation. B/Right and E/Left step through the guide; C or Back exits. It can also be reopened at any time from Radar Options.
 
 ## Location
 
@@ -31,18 +31,21 @@ The local radar watches the ADS-B emergency status and the standard 7500,
 30 seconds and acts on the nearest result within 500 km, allowing
 general-emergency aircraft to be detected across a broad UK-sized region
 without downloading ordinary country-wide traffic. When detected,
-Plane Radar switches to a single-aircraft focus view and uses a slow, smooth
-red LED breathing pulse rather than a flash. Press Back to return to the local
-radar.
+Plane Radar switches into focused flight-following. The selected aircraft stays
+at the centre, surrounding traffic remains dim and unlabeled, and the radar
+alternates with a full details page. Two opposing red heads and their short
+tails chase continuously around the LED ring, making 7700 visibly different
+from the slower broad military sweep without flashing the whole ring. Press
+Back to return to the local radar.
 
 For demonstration and testing, type **7700** as a flight/callsign. Plane Radar
 chooses one of the currently visible aircraft, clearly labels the alert as
-simulated, and exercises the same focus screen and LED pulse. This display is
+simulated, and exercises the same focus screen and LED chase. This display is
 for interest only and must not be treated as an authoritative emergency alert.
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, or **LED Sweep: On/Off** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate and bearing fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, **LED Sweep: On/Off**, or **Traffic Demo** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate and bearing fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -77,12 +80,13 @@ Passenger-facing flight numbers and operational ADS-B callsigns are not always i
 Once a target is found, Plane Radar locks onto its Mode-S hex identity and:
 
 - moves the radar centre to the followed aircraft;
-- keeps that aircraft fixed at the centre with a cyan direction marker;
-- fetches and displays other aircraft around it using the normal range presets;
+- keeps that aircraft fixed at the centre with a cyan direction marker, or red during an emergency focus;
+- fetches and displays other aircraft as dim, unlabeled background context using the normal range presets;
+- draws a destination-path ray when a route can be resolved;
 - updates the followed aircraft independently from the surrounding traffic;
 - alternates automatically every **5 seconds** between the radar and a flight-data page.
 
-The data page shows the information available from the live ADS-B feed, including callsign, aircraft type/registration when present, altitude, groundspeed, track, vertical rate, squawk and Mode-S hex.
+The focused radar card shows callsign, route, altitude, groundspeed, bearing/track and squawk. The alternating data page adds the aircraft model/registration, vertical rate, Mode-S hex, route progress and distance remaining when those fields are available from the live feeds.
 
 While following:
 
@@ -113,6 +117,10 @@ In normal/local radar mode:
 - closer in-range aircraft appear brighter red/magenta;
 - off-scale aircraft remain visible as dim magenta bearing cues;
 - a subtle blue marker across the top LED pair indicates a GPS-derived radar centre.
+
+Aircraft carrying readsb's database **interesting** flag receive a fine amber halo. Plane Radar also recognises deliberately narrow public metadata for three useful UK categories. When an air-ambulance, police or military aircraft is inside the selected radar range, the LEDs at its bearing breathe smoothly without switching fully off: **green** for a recognised air ambulance, **blue** for police, and **red** for military traffic. The on-screen aircraft and halo use the same colour. If several different special categories are in range together, the ring switches to a full sweep of each present colour in turn rather than displaying competing alerts simultaneously.
+
+Classification is best-effort: air ambulance and police identification relies on published emergency status, callsign and a small set of strong registration patterns; military and generic-interest status use readsb database flags. Public ADS-B metadata is incomplete, so an aircraft may be absent or ordinarily coloured. This is not an operational emergency-services alert.
 
 In **Follow Flight** radar view the normal sweep and nearby traffic remain, with two extra directional cues:
 
@@ -209,7 +217,7 @@ python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_ap
 
 ## App Store package
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.1` is published as `v0.1.1`.
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.2` is published as `v0.1.2`.
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
 

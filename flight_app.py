@@ -23,7 +23,8 @@ try:
         route_remaining_km,
     )
     from .keebdeck import KeebDeckLights
-    from .adsb import build_squawk_url
+    from .adsb import build_squawk_url, needs_emergency_focus
+    from .led_radar import red_chase_frame
 except ImportError:
     import radar_base as base
     from flight_follow import (
@@ -39,7 +40,8 @@ except ImportError:
         route_remaining_km,
     )
     from keebdeck import KeebDeckLights
-    from adsb import build_squawk_url
+    from adsb import build_squawk_url, needs_emergency_focus
+    from led_radar import red_chase_frame
 
 FOLLOW_PAGE_MS = 5000
 FOLLOW_TARGET_FIRST_MS = 2500
@@ -47,7 +49,6 @@ FOLLOW_TARGET_MS = 5000
 FOLLOW_ROUTE_DELAY_MS = 1400
 EMERGENCY_SCAN_MS = 30000
 EMERGENCY_RADIUS_KM = 500
-EMERGENCY_CODES = ("7500", "7600", "7700")
 
 
 class PlaneRadarApp(base.PlaneRadarApp):
@@ -193,11 +194,11 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.follow_remaining_km = None
         self.follow_locked = True
         self.follow_lost_count = 0
-        self.follow_page = "data" if emergency_code else "radar"
+        self.follow_page = "radar"
         self.follow_page_elapsed = 0
         self.follow_target_elapsed = 0
         self.follow_target_staggered = False
-        self.follow_route_pending = not bool(emergency_code)
+        self.follow_route_pending = True
         self.follow_route_elapsed = 0
         self.center_lat = target["lat"]
         self.center_lon = target["lon"]
@@ -240,6 +241,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
             "alt": item.get("alt", ""),
             "alt_ft": None,
             "type": item.get("type", ""),
+            "model": item.get("model", "") or item.get("type", ""),
             "registration": "",
             "squawk": squawk or item.get("squawk", ""),
             "vertical_rate": None,
@@ -364,8 +366,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
             super()._fetch_aircraft()
             for item in self.aircraft:
                 squawk = item.get("squawk", "")
-                emergency = item.get("emergency", "none")
-                if squawk in EMERGENCY_CODES or emergency not in ("", "none"):
+                if needs_emergency_focus(item):
                     target = self._target_from_radar_item(item, squawk)
                     self._begin_follow_target(
                         target,
@@ -376,13 +377,19 @@ class PlaneRadarApp(base.PlaneRadarApp):
             return
         super()._fetch_aircraft()
         target_callsign = (self.follow_query or "").upper()
+        target_hex = str(self.follow_target.get("hex", "")).lower()
         self.aircraft = [
             item
             for item in self.aircraft
-            if str(item.get("callsign", "")).upper() != target_callsign
+            if (
+                str(item.get("callsign", "")).upper() != target_callsign
+                and (
+                    not target_hex
+                    or str(item.get("icao", "")).lower() != target_hex
+                )
+            )
         ]
         if self.emergency_code:
-            self.aircraft = []
             self.status = "EMERGENCY " + self.emergency_code
             return
         if self.follow_locked:
@@ -532,13 +539,33 @@ class PlaneRadarApp(base.PlaneRadarApp):
             return
         target = self.follow_target
         display_heading = self._display_heading()
+        if self.follow_route is not None:
+            destination_bearing = initial_bearing(
+                target["lat"],
+                target["lon"],
+                self.follow_route["destination_lat"],
+                self.follow_route["destination_lon"],
+            )
+            path_direction = base.relative_bearing(
+                destination_bearing, display_heading
+            )
+            pdx, pdy = base.heading_vector(path_direction, 39.0)
+            ctx.rgb(*base.GRID)
+            ctx.line_width = 1.1
+            ctx.begin_path().move_to(0, 0).line_to(pdx, pdy).stroke()
+            ctx.arc(pdx, pdy, 2.0, 0, 2 * base.math.pi, True).fill()
+            ctx.line_width = 1
         direction = base.relative_bearing(
             target.get("track", target.get("heading", 0.0)), display_heading
         )
         fdx, fdy = base.heading_vector(direction, 7.0)
         rdx, rdy = -fdy * 0.55, fdx * 0.55
         bx, by = -fdx * 0.65, -fdy * 0.65
-        colour = base.CYAN if self.follow_locked else base.RED
+        colour = (
+            base.RED
+            if self.emergency_code or not self.follow_locked
+            else base.CYAN
+        )
         ctx.rgb(*colour)
         ctx.line_width = 1.2
         ctx.arc(0, 0, 9, 0, 2 * base.math.pi, True).stroke()
@@ -549,9 +576,36 @@ class PlaneRadarApp(base.PlaneRadarApp):
         ctx.close_path()
         ctx.fill()
         ctx.line_width = 1
-        ctx.font_size = 7
+        ctx.font_size = 10
         label = self.follow_query or "FOLLOW"
-        ctx.move_to(-ctx.text_width(label) / 2, 17).text(label)
+        ctx.move_to(-ctx.text_width(label) / 2, 21).text(label)
+
+    def _draw_status_card(self, ctx):
+        if not self.following:
+            return super()._draw_status_card(ctx)
+        target = self.follow_target
+        route = self.follow_route
+        callsign = self.follow_query or "?"
+        path = ""
+        if route is not None:
+            path = "{}>{}".format(route["origin"], route["destination"])
+        squawk = target.get("squawk") or "----"
+        first = callsign + "  SQK" + squawk
+        second = path or "PATH UNKNOWN"
+        altitude = target.get("alt") or "ALT?"
+        speed = int(round(float(target.get("speed", 0.0) or 0.0)))
+        track = int(round(float(target.get("track", 0.0) or 0.0))) % 360
+        third = "{}  {}KT  BRG{:03d}".format(altitude, speed, track)
+        ctx.rgba(0, 0, 0, 0.90).rectangle(-76, 39, 152, 50).fill()
+        ctx.font_size = 10
+        ctx.rgb(*(base.RED if self.emergency_code else base.CYAN))
+        ctx.move_to(-ctx.text_width(first) / 2, 53).text(first)
+        ctx.font_size = 9
+        ctx.rgb(*base.GPS_TEXT)
+        ctx.move_to(-ctx.text_width(second) / 2, 68).text(second)
+        ctx.font_size = 8
+        ctx.rgb(*base.WHITE)
+        ctx.move_to(-ctx.text_width(third) / 2, 82).text(third)
 
     def _draw_progress_bar(self, ctx, y, width=156, height=7):
         left = -width / 2
@@ -587,11 +641,11 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
         ctx.font_size = 8
         ctx.rgb(*base.ALT_TEXT)
-        identity = " ".join(
-            x
-            for x in (target.get("type", ""), target.get("registration", ""))
-            if x
-        ) or (target.get("hex", "") or "aircraft")
+        identity = target.get("model") or target.get("type") or "MODEL UNKNOWN"
+        if target.get("registration"):
+            identity += "  " + target["registration"]
+        while ctx.text_width(identity) > 174 and len(identity) > 5:
+            identity = identity[:-4].rstrip() + "..."
         ctx.move_to(-ctx.text_width(identity) / 2, -61).text(identity)
 
         alt_ft = target.get("alt_ft")
@@ -611,16 +665,16 @@ class PlaneRadarApp(base.PlaneRadarApp):
         vtext = ""
         if isinstance(vertical, (int, float)):
             vtext = "  VS {:+d}".format(int(round(vertical)))
-        line = "TRK {:03d}{}".format(track, vtext)
+        line = "BRG {:03d}{}".format(track, vtext)
         ctx.rgb(*base.ALT_TEXT).move_to(-ctx.text_width(line) / 2, -29).text(line)
 
         route = self.follow_route
         ctx.font_size = 12
         ctx.rgb(*base.YELLOW)
-        if emergency:
-            route_text = "FOCUS MODE"
-        elif route is not None:
+        if route is not None:
             route_text = "{} > {}".format(route["origin"], route["destination"])
+        elif emergency:
+            route_text = "FLIGHT PATH UNKNOWN"
         else:
             route_text = "ROUTE UNKNOWN"
         ctx.move_to(-ctx.text_width(route_text) / 2, -7).text(route_text)
@@ -709,18 +763,16 @@ class PlaneRadarApp(base.PlaneRadarApp):
             return super()._update_radar_leds()
 
         if self.emergency_code:
-            # A smooth 2.4-second breathing pulse: never off, never flashing.
-            phase = int(time.ticks_ms() % 2400)
-            distance = abs(phase - 1200)
-            level = 18 + int((1200 - distance) * 62 / 1200)
-            frame = [(level, 0, 0)] * 12
+            # A steady head-and-tail chase identifies an emergency without
+            # flashing the whole badge or repeatedly plunging it into darkness.
+            frame = red_chase_frame(12, time.ticks_ms())
             self.keeb_lights._write(frame)
             try:
                 for led, colour in enumerate(frame, 1):
                     tildagonos.leds[led] = colour
                 tildagonos.leds.write()
             except Exception as exc:
-                print("plane-radar: emergency LED pulse failed:", exc)
+                print("plane-radar: emergency LED chase failed:", exc)
             return
 
         pulse = (self.sweep_led % 2) == 0

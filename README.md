@@ -12,9 +12,11 @@ This is a native MicroPython port of [MatixYo/ESP32-Plane-Radar](https://github.
 - GPS → Wi-Fi estimate → saved postcode/manual location fallback
 - readable, round-screen-safe setup and warning screens
 - callsigns, colour-matched labels, classified aircraft symbols and fading trails
+- highlighted interesting traffic, including gentle directional LED cues for recognised emergency-service and military aircraft
+- animated on-badge traffic guide, opened with B during the splash screen
 - optional origin/destination labels from [adsbdb.com](https://www.adsbdb.com/)
 - flight-follow mode with route, progress and aircraft details
-- emergency-squawk focus with a slow red LED pulse
+- emergency-squawk focus with a fast twin-red chase around the LED ring
 - saved manual badge bearing, configurable green LED sweep and bearing-aligned traffic lights
 - optional Keepdexpansion keyboard and Spaceagon controls
 - compatible with the original 2024 Tildagon without either expansion
@@ -43,6 +45,8 @@ On startup, Plane Radar tries location sources in this order:
 
 A rough Wi-Fi result is clearly labelled before use. Press **C** to open Radar Options and choose automatic location, UK postcode, decimal coordinates, manual badge bearing, or the LED-sweep setting. Postcodes are resolved through [Postcodes.io](https://postcodes.io/) without an API key.
 
+Press **B/Right during the splash screen** to open the animated Traffic Guide. It introduces the recognised colours and aircraft symbols one by one, ending with a clearly simulated 7700 focus; the same guide is always available from Radar Options.
+
 ## Controls
 
 | Control | Radar action |
@@ -65,7 +69,9 @@ The bottom card shows the current zoom rather than a traffic count. With no airc
 
 Follow Flight accepts an operational callsign or many familiar passenger flight numbers. When the aircraft is found, the radar follows it and alternates with a flight-information screen. Available route data is approximate and may be absent or incorrect.
 
-The local radar watches the standard `7500`, `7600` and `7700` squawks. It also makes a lightweight regional check for `7700` aircraft within 500 km. An alert focuses on the aircraft and uses a smooth red breathing effect rather than flashing. Typing `7700` in Follow Flight simulates the feature with a visible aircraft for testing.
+The local radar watches the standard `7500`, `7600` and `7700` squawks. It also makes a lightweight regional check for `7700` aircraft within 500 km. An alert enters focused flight-following: the aircraft stays centred, surrounding traffic remains as dim unlabeled context, and the radar alternates with its flight details. A fast pair of opposing red comets circles the LED ring, visibly distinct from the slower, broader military sweep. Typing `7700` in Follow Flight simulates the feature with a visible aircraft for testing.
+
+Aircraft marked interesting by the ADS-B database receive a fine coloured halo. Recognised UK air-ambulance, police and military traffic also produces a slow directional pulse at its bearing: green for air ambulance, blue for police and red for military. When several different special categories are present, the ring presents a full sweep of each colour in turn so the signals remain clear. These best-effort classifications depend on incomplete public metadata and must not be used as an operational alert.
 
 ## Network and privacy
 
