@@ -43,6 +43,7 @@ class TargetParsingTests(unittest.TestCase):
             "gs": 451.2,
             "track": 92.0,
             "t": "A320",
+            "desc": "Airbus A320-214",
             "r": "G-TEST",
             "squawk": "1234",
         }]})
@@ -50,6 +51,7 @@ class TargetParsingTests(unittest.TestCase):
         self.assertEqual(target["hex"], "406abc")
         self.assertEqual(target["alt_ft"], 32000.0)
         self.assertEqual(target["registration"], "G-TEST")
+        self.assertEqual(target["model"], "Airbus A320-214")
 
     def test_target_without_position_is_not_followable(self):
         self.assertIsNone(parse_target({"ac": [{"flight": "BAW123"}]}))

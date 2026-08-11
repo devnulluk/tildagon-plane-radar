@@ -123,6 +123,7 @@ def parse_target(payload, preferred_hex=None):
         "alt": alt,
         "alt_ft": alt_ft,
         "type": _text(raw, "t")[:8],
+        "model": _text(raw, "desc")[:36],
         "registration": _text(raw, "r")[:10],
         "squawk": _text(raw, "squawk")[:4],
         "vertical_rate": _number(raw, "baro_rate", "geom_rate"),

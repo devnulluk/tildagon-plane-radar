@@ -1,6 +1,14 @@
 import unittest
 
-from led_radar import bearing_from_offsets, led_index_for_bearing, led_index_from_offsets
+from led_radar import (
+    bearing_from_offsets,
+    colour_sweep_frame,
+    cycled_colour_sweep_frame,
+    led_index_for_bearing,
+    led_index_from_offsets,
+    pulse_level,
+    red_chase_frame,
+)
 from location_provider import normalise_position
 from spaceagon import (
     angular_distance,
@@ -40,6 +48,37 @@ class LEDRadarTests(unittest.TestCase):
         self.assertEqual(led_index_from_offsets(0, 1), 1)
         self.assertEqual(led_index_from_offsets(0, -1), 7)
         self.assertIsNone(led_index_from_offsets(0, 0))
+
+    def test_attention_pulse_is_smooth_and_never_dark(self):
+        self.assertEqual(pulse_level(0), 28)
+        self.assertEqual(pulse_level(1200), 100)
+        self.assertEqual(pulse_level(2400), 28)
+        samples = [pulse_level(value) for value in range(0, 2400, 100)]
+        self.assertGreaterEqual(min(samples), 28)
+        self.assertLessEqual(max(samples), 100)
+
+    def test_emergency_chase_moves_without_flashing_the_ring(self):
+        first = red_chase_frame(12, 0)
+        second = red_chase_frame(12, 90)
+        self.assertEqual(len(first), 12)
+        self.assertNotEqual(first, second)
+        self.assertEqual(first[0], (180, 0, 0))
+        self.assertEqual(first[6], (180, 0, 0))
+        self.assertEqual(second[1], (180, 0, 0))
+        self.assertEqual(second[7], (180, 0, 0))
+        self.assertTrue(all(colour[0] > 0 for colour in first))
+
+    def test_multi_alert_sweep_cycles_each_colour(self):
+        colours = ((0, 180, 45), (0, 55, 220), (220, 0, 15))
+        green = cycled_colour_sweep_frame(12, colours, 0)
+        blue = cycled_colour_sweep_frame(12, colours, 1800)
+        red = cycled_colour_sweep_frame(12, colours, 3600)
+        self.assertEqual(green[0], (0, 180, 45))
+        self.assertEqual(blue[0], (0, 55, 220))
+        self.assertEqual(red[0], (220, 0, 15))
+        moved = colour_sweep_frame(12, 120, colours[0])
+        self.assertEqual(moved[1], (0, 180, 45))
+        self.assertNotEqual(moved, green)
 
 
 class SpaceagonTests(unittest.TestCase):

@@ -15,7 +15,14 @@ try:
     from .radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from .adsb import build_url, parse_aircraft
     from .location_provider import get_best_position
-    from .led_radar import led_index_for_bearing, max_rgb
+    from .led_radar import (
+        colour_sweep_frame,
+        cycled_colour_sweep_frame,
+        led_index_for_bearing,
+        max_rgb,
+        pulse_level,
+        red_chase_frame,
+    )
     from .spaceagon import (
         angular_distance,
         bearing_from_offsets,
@@ -41,7 +48,14 @@ except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
     from location_provider import get_best_position
-    from led_radar import led_index_for_bearing, max_rgb
+    from led_radar import (
+        colour_sweep_frame,
+        cycled_colour_sweep_frame,
+        led_index_for_bearing,
+        max_rgb,
+        pulse_level,
+        red_chase_frame,
+    )
     from spaceagon import (
         angular_distance,
         bearing_from_offsets,
@@ -79,6 +93,7 @@ SELECTION_MS = 7000
 TRAIL_POINTS = 20
 AIRCRAFT_LABEL_SIZE = 14
 LOCATION_NOTICE_MS = 4500
+DEMO_STAGE_MS = 3600
 COARSE_LOCATION_METRES = 5000
 KM_PER_MILE = 1.609344
 DEFAULT_CONFIG = {
@@ -105,6 +120,8 @@ YELLOW = (1.0, 0.78, 0.12)
 ALT_TEXT = (0.72, 0.75, 0.82)
 GPS_TEXT = (0.25, 1.0, 0.45)
 CYAN = (0.2, 0.82, 1.0)
+POLICE_BLUE = (0.12, 0.42, 1.0)
+INTERESTING = (1.0, 0.55, 0.08)
 AIRCRAFT_COLOURS = (
     (0.25, 1.0, 0.15),
     (1.0, 0.18, 0.86),
@@ -112,6 +129,65 @@ AIRCRAFT_COLOURS = (
     (1.0, 0.86, 0.12),
     (1.0, 0.42, 0.12),
 )
+DEMO_STAGES = (
+    {
+        "title": "AIR AMBULANCE",
+        "line1": "GREEN LED ALERT",
+        "line2": "ROTOR = HELICOPTER",
+        "callsign": "HLE72",
+        "kind": "helicopter",
+        "heading": 90,
+        "attention": "air_ambulance",
+        "colour": GPS_TEXT,
+        "led": (0, 180, 45),
+    },
+    {
+        "title": "POLICE",
+        "line1": "BLUE LED ALERT",
+        "line2": "ROTOR = HELICOPTER",
+        "callsign": "UKP151",
+        "kind": "helicopter",
+        "heading": 90,
+        "attention": "police",
+        "colour": POLICE_BLUE,
+        "led": (0, 55, 220),
+    },
+    {
+        "title": "MILITARY",
+        "line1": "RED LED ALERT",
+        "line2": "DELTA = MILITARY",
+        "callsign": "RFR01",
+        "kind": "military",
+        "heading": 90,
+        "attention": "military",
+        "colour": RED,
+        "led": (220, 0, 15),
+    },
+    {
+        "title": "INTERESTING",
+        "line1": "AMBER HALO",
+        "line2": "DATABASE-MARKED",
+        "callsign": "VIP01",
+        "kind": "civilian",
+        "heading": 90,
+        "attention": "interesting",
+        "colour": INTERESTING,
+        "led": (190, 90, 0),
+    },
+    {
+        "title": "SQUAWK 7700",
+        "line1": "GENERAL EMERGENCY",
+        "line2": "TWIN RED CHASE",
+        "callsign": "SIM7700",
+        "kind": "civilian",
+        "heading": 90,
+        "attention": "emergency",
+        "colour": RED,
+        "led": (220, 0, 0),
+        "emergency": True,
+    },
+)
+DEMO_BACKGROUND_ITEM = {"kind": "civilian", "heading": 225}
 
 
 def _load_config():
@@ -211,6 +287,8 @@ class PlaneRadarApp(app.App):
         self.first_run = not bool(self.config.get("intro_seen", False))
         self.view = "splash"
         self.splash_elapsed = 0
+        self.demo_stage = 0
+        self.demo_elapsed = 0
         self._splash_button_handler = self._handle_splash_button_down
         eventbus.on(ButtonDownEvent, self._splash_button_handler, self)
 
@@ -263,14 +341,42 @@ class PlaneRadarApp(app.App):
             self.status = "Manual position"
 
     def _handle_splash_button_down(self, event):
-        """Open the manual immediately, even while startup updates are busy."""
+        """Open the manual or showcase while startup updates are busy."""
         if self.view != "splash":
+            return
+        if BUTTON_TYPES["RIGHT"] in event.button:
+            self._start_traffic_demo()
             return
         if BUTTON_TYPES["CONFIRM"] not in event.button:
             return
         self.button_states.clear()
         self._mark_intro_seen()
         self.view = "instructions"
+
+    def _start_traffic_demo(self):
+        self.button_states.clear()
+        self.view = "traffic_demo"
+        self.demo_stage = 0
+        self.demo_elapsed = 0
+
+    def _handle_traffic_demo_input(self, delta):
+        self.demo_elapsed += delta
+        if self.button_states.get(BUTTON_TYPES["RIGHT"]):
+            self.demo_stage = (self.demo_stage + 1) % len(DEMO_STAGES)
+            self.demo_elapsed = 0
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["LEFT"]):
+            self.demo_stage = (self.demo_stage - 1) % len(DEMO_STAGES)
+            self.demo_elapsed = 0
+            self.button_states.clear()
+        elif (
+            self.button_states.get(BUTTON_TYPES["CONFIRM"])
+            or self.button_states.get(BUTTON_TYPES["CANCEL"])
+        ):
+            self._finish_splash()
+        elif self.demo_elapsed >= DEMO_STAGE_MS:
+            self.demo_elapsed %= DEMO_STAGE_MS
+            self.demo_stage = (self.demo_stage + 1) % len(DEMO_STAGES)
 
     def _dialog_cleanup(self):
         if self.dialog is not None:
@@ -682,6 +788,22 @@ class PlaneRadarApp(app.App):
         if not self.leds_active:
             return
 
+        now_ms = time.ticks_ms()
+        if self.view == "traffic_demo":
+            stage = DEMO_STAGES[self.demo_stage]
+            if stage.get("emergency"):
+                frame = red_chase_frame(12, self.demo_elapsed)
+            else:
+                frame = colour_sweep_frame(12, self.demo_elapsed, stage["led"])
+            try:
+                for led, colour in enumerate(frame, 1):
+                    tildagonos.leds[led] = colour
+                tildagonos.leds.write()
+            except Exception as exc:
+                print("plane-radar: demo LED sweep failed:", exc)
+                self._release_leds()
+            return
+
         frame = [(0, 0, 0) for _ in range(12)]
         if self.led_sweep:
             for offset, colour in (
@@ -693,6 +815,8 @@ class PlaneRadarApp(app.App):
                 frame[index] = max_rgb(frame[index], colour)
 
         display_heading = self._display_heading()
+        attention_pulse = pulse_level(now_ms)
+        attention_types = []
         if self.center_lat is not None and self.center_lon is not None:
             for item in self.aircraft:
                 lat = item.get("lat")
@@ -707,7 +831,26 @@ class PlaneRadarApp(app.App):
                     continue
                 led_bearing = relative_bearing(bearing, display_heading)
                 led = led_index_for_bearing(led_bearing)
-                if distance <= self.outer_km:
+                attention = item.get("attention", "")
+                if (
+                    attention
+                    and distance <= self.outer_km
+                    and attention not in attention_types
+                ):
+                    attention_types.append(attention)
+                if (
+                    attention in ("air_ambulance", "police", "military")
+                    and distance <= self.outer_km
+                ):
+                    base_colour = self._attention_led_colour(attention)
+                    colour = tuple(
+                        channel * attention_pulse // 100 for channel in base_colour
+                    )
+                    for neighbour in (-1, 1):
+                        index = (led - 1 + neighbour) % 12
+                        glow = tuple(channel * 24 // 100 for channel in colour)
+                        frame[index] = max_rgb(frame[index], glow)
+                elif distance <= self.outer_km:
                     closeness = 1.0 - min(distance / self.outer_km, 1.0)
                     colour = (
                         int(120 + 135 * closeness),
@@ -717,6 +860,20 @@ class PlaneRadarApp(app.App):
                 else:
                     colour = (42, 0, 24)
                 frame[led - 1] = max_rgb(frame[led - 1], colour)
+
+        if len(attention_types) > 1:
+            ordered = [
+                attention
+                for attention in (
+                    "air_ambulance",
+                    "police",
+                    "military",
+                    "interesting",
+                )
+                if attention in attention_types
+            ]
+            colours = [self._attention_led_colour(item) for item in ordered]
+            frame = cycled_colour_sweep_frame(12, colours, now_ms)
 
         if self.location_source == "gps":
             frame[0] = max_rgb(frame[0], (0, 10, 28))
@@ -827,6 +984,15 @@ class PlaneRadarApp(app.App):
         return item.get("icao") or item.get("callsign")
 
     def _aircraft_colour(self, item):
+        attention = item.get("attention", "")
+        if attention == "air_ambulance":
+            return GPS_TEXT
+        if attention == "police":
+            return POLICE_BLUE
+        if attention == "military":
+            return RED
+        if attention == "interesting":
+            return INTERESTING
         kind = item.get("kind", "civilian")
         if kind == "military":
             return MAGENTA
@@ -837,6 +1003,15 @@ class PlaneRadarApp(app.App):
         key = self._aircraft_key(item) or "?"
         index = sum(ord(char) for char in key) % len(AIRCRAFT_COLOURS)
         return AIRCRAFT_COLOURS[index]
+
+    def _attention_led_colour(self, attention):
+        if attention == "air_ambulance":
+            return (0, 180, 45)
+        if attention == "police":
+            return (0, 55, 220)
+        if attention == "military":
+            return (220, 0, 15)
+        return (190, 90, 0)
 
     def _update_aircraft_trails(self):
         active = set()
@@ -862,6 +1037,9 @@ class PlaneRadarApp(app.App):
     def _handle_splash_input(self, delta):
         self.splash_elapsed += delta
         duration = FIRST_SPLASH_MS if self.first_run else NORMAL_SPLASH_MS
+        if self.button_states.get(BUTTON_TYPES["RIGHT"]):
+            self._start_traffic_demo()
+            return
         if self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self.button_states.clear()
             self._mark_intro_seen()
@@ -886,13 +1064,13 @@ class PlaneRadarApp(app.App):
             self.button_states.get(BUTTON_TYPES["LEFT"])
             or self.button_states.get(BUTTON_TYPES["UP"])
         ):
-            self.location_choice = (self.location_choice - 1) % 5
+            self.location_choice = (self.location_choice - 1) % 6
             self.button_states.clear()
         elif (
             self.button_states.get(BUTTON_TYPES["RIGHT"])
             or self.button_states.get(BUTTON_TYPES["DOWN"])
         ):
-            self.location_choice = (self.location_choice + 1) % 5
+            self.location_choice = (self.location_choice + 1) % 6
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self.button_states.clear()
@@ -906,10 +1084,12 @@ class PlaneRadarApp(app.App):
                 self.setup_stage = "lat"
             elif self.location_choice == 3:
                 self.setup_stage = "bearing"
-            else:
+            elif self.location_choice == 4:
                 self.led_sweep = not self.led_sweep
                 self._persist_preferences()
                 self.status = "LED sweep " + ("on" if self.led_sweep else "off")
+            else:
+                self._start_traffic_demo()
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
             self.view = "radar"
@@ -937,6 +1117,9 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "instructions":
             self._handle_instructions_input()
+            return
+        if self.view == "traffic_demo":
+            self._handle_traffic_demo_input(delta)
             return
         if self.view == "location_setup":
             self._handle_location_setup_input()
@@ -1194,6 +1377,14 @@ class PlaneRadarApp(app.App):
             return
         x, y, distance = point
         colour = self._aircraft_colour(item)
+        if getattr(self, "following", False):
+            # Nearby traffic remains useful context around a followed target,
+            # but must never compete with the centred aircraft or its data.
+            colour = (
+                colour[0] * 0.30,
+                colour[1] * 0.30,
+                colour[2] * 0.30,
+            )
 
         if distance > self.outer_km:
             east, north, _ = offset_km(
@@ -1253,6 +1444,14 @@ class PlaneRadarApp(app.App):
 
         self._draw_aircraft_symbol(ctx, x, y, item, colour, display_heading)
 
+        if item.get("attention"):
+            # A fine halo makes unusual traffic visible without adding another
+            # tiny word to the already busy radar display.
+            ctx.rgb(*colour)
+            ctx.line_width = 1.1
+            ctx.arc(x, y, 9.5, 0, 2 * math.pi, True).stroke()
+            ctx.line_width = 1
+
         if item is self.selected_item:
             ctx.rgb(*YELLOW)
             ctx.line_width = 1.5
@@ -1263,6 +1462,8 @@ class PlaneRadarApp(app.App):
 
     def _draw_aircraft_labels(self, ctx, aircraft_points):
         """Place large callsigns around aircraft with minimal overlap."""
+        if getattr(self, "following", False):
+            return
         occupied = []
         ctx.font_size = AIRCRAFT_LABEL_SIZE
         show_both = len(aircraft_points) == 1
@@ -1409,9 +1610,103 @@ class PlaneRadarApp(app.App):
         ctx.font_size = 14
         text = "Scanning the skies..."
         ctx.rgb(*YELLOW).move_to(-ctx.text_width(text) / 2, 13).text(text)
-        ctx.font_size = 10
+        ctx.font_size = 9
+        prompt = "PRESS B FOR DEMO"
+        ctx.rgb(*GPS_TEXT).move_to(-ctx.text_width(prompt) / 2, 70).text(prompt)
         prompt = "PRESS C FOR MANUAL"
-        ctx.rgb(*WHITE).move_to(-ctx.text_width(prompt) / 2, 83).text(prompt)
+        ctx.rgb(*WHITE).move_to(-ctx.text_width(prompt) / 2, 85).text(prompt)
+
+    def _demo_aircraft_xy(self, stage, progress):
+        if stage.get("emergency"):
+            entry = min(1.0, progress / 0.28)
+            return -58.0 + entry * 58.0, -8.0 + entry * 8.0
+        return (
+            -58.0 + progress * 116.0,
+            -8.0 + math.sin(progress * 2 * math.pi) * 8.0,
+        )
+
+    def _draw_traffic_demo(self, ctx):
+        """Animate a round-safe, self-explaining special-traffic showcase."""
+        stage = DEMO_STAGES[self.demo_stage]
+        colour = stage["colour"]
+        self._draw_grid(ctx)
+
+        sweep = (self.demo_elapsed % 1800) * 360.0 / 1800.0
+        sx, sy = heading_vector(sweep, 71)
+        ctx.rgb(colour[0] * 0.45, colour[1] * 0.45, colour[2] * 0.45)
+        ctx.line_width = 1.5
+        ctx.begin_path().move_to(0, 0).line_to(sx, sy).stroke()
+        ctx.line_width = 1
+
+        progress = min(1.0, self.demo_elapsed / float(DEMO_STAGE_MS))
+        if stage.get("emergency"):
+            background_colour = (
+                GRID_DIM[0] * 0.35,
+                GRID_DIM[1] * 0.35,
+                GRID_DIM[2] * 0.35,
+            )
+            for bx, by in ((-44, -31), (47, -25), (42, 28)):
+                self._draw_aircraft_symbol(
+                    ctx,
+                    bx,
+                    by,
+                    DEMO_BACKGROUND_ITEM,
+                    background_colour,
+                    0,
+                )
+
+        x, y = self._demo_aircraft_xy(stage, progress)
+        for trail_index in range(6, 0, -1):
+            old_progress = max(0.0, progress - trail_index * 0.045)
+            tx, ty = self._demo_aircraft_xy(stage, old_progress)
+            strength = 0.12 + (6 - trail_index) * 0.075
+            ctx.rgb(
+                colour[0] * strength,
+                colour[1] * strength,
+                colour[2] * strength,
+            )
+            ctx.arc(tx, ty, 1.15, 0, 2 * math.pi, True).fill()
+
+        ctx.rgb(*colour)
+        ctx.line_width = 1.4
+        ctx.begin_path().move_to(x, y).line_to(x + 17, y).stroke()
+        ctx.line_width = 1
+        self._draw_aircraft_symbol(ctx, x, y, stage, colour, 0)
+        ctx.rgb(*colour)
+        ctx.line_width = 1.1
+        ctx.arc(x, y, 9.5, 0, 2 * math.pi, True).stroke()
+        ctx.line_width = 1
+        self._draw_aircraft_labels(ctx, [(stage, x, y, colour)])
+
+        ctx.font_size = 12 if not stage.get("emergency") else 10
+        title = "SIMULATED EMERGENCY" if stage.get("emergency") else "TRAFFIC GUIDE"
+        ctx.rgb(*WHITE).move_to(-ctx.text_width(title) / 2, -91).text(title)
+        ctx.font_size = 7
+        hint = "B NEXT   E PREV   C/F EXIT"
+        ctx.rgb(*ALT_TEXT).move_to(-ctx.text_width(hint) / 2, -73).text(hint)
+        for index in range(len(DEMO_STAGES)):
+            dot_colour = colour if index == self.demo_stage else GRID_DIM
+            ctx.rgb(*dot_colour).arc(
+                (index - 1.5) * 11, -58, 2.2, 0, 2 * math.pi, True
+            ).fill()
+
+        entry = min(400, self.demo_elapsed)
+        card_top = 43 + int((400 - entry) * 18 / 400)
+        ctx.rgba(0, 0, 0, 0.9).rectangle(-72, card_top, 144, 43).fill()
+        ctx.font_size = 11
+        ctx.rgb(*colour)
+        ctx.move_to(-ctx.text_width(stage["title"]) / 2, card_top + 13).text(
+            stage["title"]
+        )
+        ctx.font_size = 8
+        ctx.rgb(*WHITE)
+        ctx.move_to(-ctx.text_width(stage["line1"]) / 2, card_top + 27).text(
+            stage["line1"]
+        )
+        ctx.rgb(*ALT_TEXT)
+        ctx.move_to(-ctx.text_width(stage["line2"]) / 2, card_top + 38).text(
+            stage["line2"]
+        )
 
     def _draw_instructions(self, ctx):
         ctx.rgb(*BACKGROUND).rectangle(-120, -120, 240, 240).fill()
@@ -1443,6 +1738,7 @@ class PlaneRadarApp(app.App):
                 else "NORTH-UP"
             ),
             "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
+            "TRAFFIC DEMO",
         )
         ctx.font_size = 17
         choice = options[self.location_choice]
@@ -1569,6 +1865,10 @@ class PlaneRadarApp(app.App):
             return
         if self.view == "instructions":
             self._draw_instructions(ctx)
+            ctx.restore()
+            return
+        if self.view == "traffic_demo":
+            self._draw_traffic_demo(ctx)
             ctx.restore()
             return
         if self.view == "location_setup":
