@@ -222,7 +222,7 @@ python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_ap
 
 ## App Store package
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.3` is published as `v0.1.3`.
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.4` is published as `v0.1.4`.
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
 
