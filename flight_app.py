@@ -77,6 +77,11 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.keyboard_confirm_pending = False
         self.pending_manual_open = False
         self.pending_location_submit = False
+        self.pending_flight_submit = False
+        self.pending_options_confirm = False
+        self.pending_aircraft_list = False
+        self.aircraft_list = []
+        self.aircraft_list_choice = 0
         self.emergency_code = None
         self.emergency_simulated = False
         self.emergency_scan_elapsed = 0
@@ -94,15 +99,29 @@ class PlaneRadarApp(base.PlaneRadarApp):
             key = event.button.find_parent_in_group("Keyboard")
         except Exception:
             key = None
-        if key is None:
-            return
-        name = getattr(key, "name", "")
+        name = getattr(key, "name", "") if key is not None else ""
         if self.dialog is not None:
             if self.setup_stage is not None and name == "ENTER":
                 self.pending_location_submit = True
                 self.keyboard_confirm_pending = True
-            elif self.setup_stage is None and name in ("ESC", "ESCAPE"):
-                self.pending_flight_cancel = True
+            elif self.setup_stage is None:
+                if (
+                    name == "ENTER"
+                    or BUTTON_TYPES["CONFIRM"] in event.button
+                ):
+                    # TextDialog classifies Enter as a keyboard key before it
+                    # reaches the generic CONFIRM branch. Submit explicitly.
+                    self.pending_flight_submit = True
+                    self.keyboard_confirm_pending = True
+                elif name in ("ESC", "ESCAPE"):
+                    self.pending_flight_cancel = True
+            return
+        if key is None:
+            return
+        if self.view == "location_setup" and name == "ENTER":
+            self.pending_options_confirm = True
+            return
+        if self.view == "aircraft_list":
             return
         if self.view != "radar":
             return
@@ -116,6 +135,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
             # Let the keyboard's generic CONFIRM alias behave exactly like
             # physical C. Flight search still opens as soon as a callsign is
             # typed, without stealing Enter from Radar Options.
+            return
+        if name == "DOWN" and not self.following:
+            self.pending_aircraft_list = True
             return
         if is_flight_key(name):
             self.pending_flight_open = True
@@ -146,6 +168,51 @@ class PlaneRadarApp(base.PlaneRadarApp):
             self._simulate_emergency()
             return
         self.pending_follow_query = query
+
+    def _visible_aircraft(self):
+        """Return selectable on-screen aircraft with useful identities."""
+        visible = []
+        for item in self.aircraft:
+            callsign = item.get("callsign") or item.get("icao")
+            point = self._screen_point_for_aircraft(item)
+            if not callsign or point is None or point[2] > self.outer_km:
+                continue
+            visible.append(item)
+        visible.sort(key=lambda item: str(item.get("callsign") or item.get("icao")))
+        return visible
+
+    def _open_aircraft_list(self):
+        self.aircraft_list = self._visible_aircraft()
+        self.aircraft_list_choice = 0
+        self.button_states.clear()
+        if not self.aircraft_list:
+            self.status = "No visible flights"
+            return
+        self.view = "aircraft_list"
+
+    def _handle_aircraft_list_input(self):
+        if not self.aircraft_list:
+            self.view = "radar"
+            return
+        if self.button_states.get(BUTTON_TYPES["UP"]):
+            self.aircraft_list_choice = (
+                self.aircraft_list_choice - 1
+            ) % len(self.aircraft_list)
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["DOWN"]):
+            self.aircraft_list_choice = (
+                self.aircraft_list_choice + 1
+            ) % len(self.aircraft_list)
+            self.button_states.clear()
+        elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
+            item = self.aircraft_list[self.aircraft_list_choice]
+            query = item.get("callsign") or item.get("icao")
+            self.button_states.clear()
+            self.view = "radar"
+            self._start_follow(query)
+        elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
+            self.button_states.clear()
+            self.view = "radar"
 
     def _cancel_flight_dialog(self):
         self._dialog_cleanup()
@@ -498,6 +565,27 @@ class PlaneRadarApp(base.PlaneRadarApp):
                 self._complete_location()
             self.button_states.clear()
 
+        if self.pending_flight_submit:
+            self.pending_flight_submit = False
+            self.keyboard_confirm_pending = False
+            if self.dialog is not None and self.setup_stage is None:
+                self._complete_flight_dialog()
+            self.button_states.clear()
+
+        if self.pending_options_confirm:
+            self.pending_options_confirm = False
+            if self.view == "location_setup":
+                self._select_location_option()
+
+        if self.pending_aircraft_list:
+            self.pending_aircraft_list = False
+            if self.view == "radar" and self.dialog is None and not self.following:
+                self._open_aircraft_list()
+
+        if self.view == "aircraft_list":
+            self._handle_aircraft_list_input()
+            return
+
         if self.pending_manual_open and self.dialog is None:
             self.pending_manual_open = False
             self.pending_flight_open = False
@@ -533,6 +621,13 @@ class PlaneRadarApp(base.PlaneRadarApp):
             ctx.rgb(*base.CYAN).move_to(77, -88).text("SP")
             if self.heading_up:
                 ctx.rgb(*base.CYAN).move_to(76, -78).text("HDG")
+
+    def _center_text(self, ctx, text, y, bold=False):
+        """Draw centred text, with a subtle second pass for LCD legibility."""
+        x = -ctx.text_width(text) / 2
+        ctx.move_to(x, y).text(text)
+        if bold:
+            ctx.move_to(x + 0.65, y).text(text)
 
     def _draw_follow_target_center(self, ctx):
         if not self.following:
@@ -576,9 +671,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
         ctx.close_path()
         ctx.fill()
         ctx.line_width = 1
-        ctx.font_size = 10
+        ctx.font_size = 13
         label = self.follow_query or "FOLLOW"
-        ctx.move_to(-ctx.text_width(label) / 2, 21).text(label)
+        self._center_text(ctx, label, 22, bold=True)
 
     def _draw_status_card(self, ctx):
         if not self.following:
@@ -596,16 +691,16 @@ class PlaneRadarApp(base.PlaneRadarApp):
         speed = int(round(float(target.get("speed", 0.0) or 0.0)))
         track = int(round(float(target.get("track", 0.0) or 0.0))) % 360
         third = "{}  {}KT  BRG{:03d}".format(altitude, speed, track)
-        ctx.rgba(0, 0, 0, 0.90).rectangle(-76, 39, 152, 50).fill()
-        ctx.font_size = 10
+        ctx.rgba(0, 0, 0, 0.90).rectangle(-82, 34, 164, 57).fill()
+        ctx.font_size = 13
         ctx.rgb(*(base.RED if self.emergency_code else base.CYAN))
-        ctx.move_to(-ctx.text_width(first) / 2, 53).text(first)
-        ctx.font_size = 9
+        self._center_text(ctx, first, 51, bold=True)
+        ctx.font_size = 12
         ctx.rgb(*base.GPS_TEXT)
-        ctx.move_to(-ctx.text_width(second) / 2, 68).text(second)
-        ctx.font_size = 8
+        self._center_text(ctx, second, 70, bold=True)
+        ctx.font_size = 10
         ctx.rgb(*base.WHITE)
-        ctx.move_to(-ctx.text_width(third) / 2, 82).text(third)
+        self._center_text(ctx, third, 86, bold=True)
 
     def _draw_progress_bar(self, ctx, y, width=156, height=7):
         left = -width / 2
@@ -625,28 +720,28 @@ class PlaneRadarApp(base.PlaneRadarApp):
         target = self.follow_target
         emergency = bool(self.emergency_code)
         ctx.rgb(*base.BACKGROUND).rectangle(-120, -120, 240, 240).fill()
-        ctx.font_size = 8
+        ctx.font_size = 11
         ctx.rgb(*(base.RED if emergency else base.CYAN))
         if emergency:
             prefix = "SIMULATED " if self.emergency_simulated else ""
             header = prefix + "EMERGENCY " + self.emergency_code
         else:
             header = "FOLLOWING"
-        ctx.move_to(-ctx.text_width(header) / 2, -99).text(header)
+        self._center_text(ctx, header, -91, bold=True)
 
-        ctx.font_size = 17
+        ctx.font_size = 22
         ctx.rgb(*(base.WHITE if self.follow_locked else base.RED))
         callsign = self.follow_query or "?"
-        ctx.move_to(-ctx.text_width(callsign) / 2, -80).text(callsign)
+        self._center_text(ctx, callsign, -77, bold=True)
 
-        ctx.font_size = 8
+        ctx.font_size = 11
         ctx.rgb(*base.ALT_TEXT)
         identity = target.get("model") or target.get("type") or "MODEL UNKNOWN"
         if target.get("registration"):
             identity += "  " + target["registration"]
-        while ctx.text_width(identity) > 174 and len(identity) > 5:
+        while ctx.text_width(identity) > 170 and len(identity) > 5:
             identity = identity[:-4].rstrip() + "..."
-        ctx.move_to(-ctx.text_width(identity) / 2, -61).text(identity)
+        self._center_text(ctx, identity, -56, bold=True)
 
         alt_ft = target.get("alt_ft")
         alt_text = "?"
@@ -655,21 +750,22 @@ class PlaneRadarApp(base.PlaneRadarApp):
         elif target.get("alt"):
             alt_text = target["alt"]
         speed = int(round(float(target.get("speed", 0.0) or 0.0)))
-        ctx.font_size = 10
+        ctx.font_size = 13
         ctx.rgb(*base.WHITE)
         line = "ALT {}   GS {}kt".format(alt_text, speed)
-        ctx.move_to(-ctx.text_width(line) / 2, -46).text(line)
-        ctx.font_size = 8
+        self._center_text(ctx, line, -38, bold=True)
+        ctx.font_size = 11
         track = int(round(float(target.get("track", 0.0) or 0.0))) % 360
         vertical = target.get("vertical_rate")
         vtext = ""
         if isinstance(vertical, (int, float)):
             vtext = "  VS {:+d}".format(int(round(vertical)))
         line = "BRG {:03d}{}".format(track, vtext)
-        ctx.rgb(*base.ALT_TEXT).move_to(-ctx.text_width(line) / 2, -29).text(line)
+        ctx.rgb(*base.ALT_TEXT)
+        self._center_text(ctx, line, -20, bold=True)
 
         route = self.follow_route
-        ctx.font_size = 12
+        ctx.font_size = 15
         ctx.rgb(*base.YELLOW)
         if route is not None:
             route_text = "{} > {}".format(route["origin"], route["destination"])
@@ -677,10 +773,10 @@ class PlaneRadarApp(base.PlaneRadarApp):
             route_text = "FLIGHT PATH UNKNOWN"
         else:
             route_text = "ROUTE UNKNOWN"
-        ctx.move_to(-ctx.text_width(route_text) / 2, -7).text(route_text)
+        self._center_text(ctx, route_text, 2, bold=True)
 
-        self._draw_progress_bar(ctx, 9)
-        ctx.font_size = 8
+        self._draw_progress_bar(ctx, 15)
+        ctx.font_size = 10
         if self.follow_progress is not None:
             pct = int(round(self.follow_progress * 100.0))
             progress_text = "~{}% of route".format(pct)
@@ -688,9 +784,8 @@ class PlaneRadarApp(base.PlaneRadarApp):
             progress_text = "route unverified"
         else:
             progress_text = "flight plan unavailable"
-        ctx.rgb(*base.WHITE).move_to(
-            -ctx.text_width(progress_text) / 2, 29
-        ).text(progress_text)
+        ctx.rgb(*base.WHITE)
+        self._center_text(ctx, progress_text, 38, bold=True)
 
         if self.follow_remaining_km is not None and route is not None:
             remaining = self.follow_remaining_km
@@ -703,24 +798,61 @@ class PlaneRadarApp(base.PlaneRadarApp):
                 remaining_text = "~{}km to {}".format(
                     int(round(remaining)), route["destination"]
                 )
-            ctx.rgb(*base.GPS_TEXT).move_to(
-                -ctx.text_width(remaining_text) / 2, 47
-            ).text(remaining_text)
+            ctx.rgb(*base.GPS_TEXT)
+            self._center_text(ctx, remaining_text, 56, bold=True)
 
-        ctx.font_size = 8
+        ctx.font_size = 10
         sqk = target.get("squawk") or "----"
         ident = "SQK {}   HEX {}".format(
             sqk, (target.get("hex") or "?")[:6].upper()
         )
-        ctx.rgb(*base.ALT_TEXT).move_to(-ctx.text_width(ident) / 2, 66).text(ident)
+        ctx.rgb(*base.ALT_TEXT)
+        self._center_text(ctx, ident, 73, bold=True)
 
         seconds = max(
             1, int((FOLLOW_PAGE_MS - self.follow_page_elapsed + 999) / 1000)
         )
         footer = "RADAR IN {}s   BACK=STOP".format(seconds)
-        ctx.rgb(*base.YELLOW).move_to(-ctx.text_width(footer) / 2, 94).text(footer)
+        ctx.rgb(*base.YELLOW)
+        self._center_text(ctx, footer, 94, bold=True)
+
+    def _draw_aircraft_list(self, ctx):
+        ctx.rgb(*base.BACKGROUND).rectangle(-120, -120, 240, 240).fill()
+        ctx.font_size = 15
+        ctx.rgb(*base.WHITE)
+        self._center_text(ctx, "VISIBLE FLIGHTS", -91, bold=True)
+
+        count = len(self.aircraft_list)
+        start = max(0, min(self.aircraft_list_choice - 2, count - 5))
+        shown = self.aircraft_list[start:start + 5]
+        for row, item in enumerate(shown):
+            index = start + row
+            y = -61 + row * 30
+            selected = index == self.aircraft_list_choice
+            if selected:
+                ctx.rgba(0.0, 0.36, 0.18, 0.78).rectangle(
+                    -82, y - 12, 164, 28
+                ).fill()
+            callsign = str(item.get("callsign") or item.get("icao") or "?")
+            route = self.route_cache.get(item.get("callsign", ""), "")
+            ctx.font_size = 13 if selected else 11
+            ctx.rgb(*(base.YELLOW if selected else base.WHITE))
+            self._center_text(ctx, callsign, y, bold=selected)
+            ctx.font_size = 9
+            ctx.rgb(*(base.GPS_TEXT if route else base.ALT_TEXT))
+            self._center_text(ctx, route or "ROUTE UNKNOWN", y + 12, bold=selected)
+
+        ctx.font_size = 9
+        ctx.rgb(*base.YELLOW)
+        footer = "UP/DOWN  ENTER  F BACK"
+        self._center_text(ctx, footer, 94, bold=True)
 
     def draw(self, ctx):
+        if self.view == "aircraft_list":
+            ctx.save()
+            self._draw_aircraft_list(ctx)
+            ctx.restore()
+            return
         if (
             self.following
             and self.follow_page == "data"

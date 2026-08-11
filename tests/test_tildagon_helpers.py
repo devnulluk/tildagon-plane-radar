@@ -8,6 +8,7 @@ from led_radar import (
     led_index_from_offsets,
     pulse_level,
     red_chase_frame,
+    scale_rgb,
 )
 from location_provider import normalise_position
 from spaceagon import (
@@ -79,6 +80,12 @@ class LEDRadarTests(unittest.TestCase):
         moved = colour_sweep_frame(12, 120, colours[0])
         self.assertEqual(moved[1], (0, 180, 45))
         self.assertNotEqual(moved, green)
+
+    def test_led_brightness_scaling_is_clamped(self):
+        self.assertEqual(scale_rgb((0, 52, 12), 25), (0, 13, 3))
+        self.assertEqual(scale_rgb((100, 80, 40), 50), (50, 40, 20))
+        self.assertEqual(scale_rgb((100, 80, 40), -1), (0, 0, 0))
+        self.assertEqual(scale_rgb((100, 80, 40), 150), (100, 80, 40))
 
 
 class SpaceagonTests(unittest.TestCase):

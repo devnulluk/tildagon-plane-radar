@@ -8,7 +8,7 @@ Plane Radar shows live nearby aircraft from adsb.fi on the badge's round display
 
 Plane Radar opens with an animated radar boot screen. Press **C** while the splash is visible to open the full QR manual screen.
 
-The first-run splash remains visible for five seconds; later launches remain visible for three seconds. Press **C** for the QR manual or **B/Right** for the animated Traffic Guide. The guide loops through air ambulance, police, military and database-marked interesting traffic, then ends with a clearly simulated 7700 focus. Each chapter has a moving example, its display symbol, an explanatory card and the matching LED animation. B/Right and E/Left step through the guide; C or Back exits. It can also be reopened at any time from Radar Options.
+The splash remains visible for about five seconds on every launch. Press **C** for the QR manual or **B/Right** for the animated Traffic Guide. The guide loops through air ambulance, police, military and database-marked interesting traffic, then ends with a clearly simulated 7700 focus. Each chapter has a moving example, its display symbol, an explanatory card and the matching LED animation. B/Right and E/Left step through the guide; C or Back exits. It can also be reopened at any time from Radar Options.
 
 ## Location
 
@@ -45,7 +45,7 @@ for interest only and must not be treated as an authoritative emergency alert.
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, **LED Sweep: On/Off**, or **Traffic Demo** with the joystick, any keyboard arrow pair, or physical E/B, then press C. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate and bearing fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, **LED Sweep: On/Off**, **LED Level: 25/50/75/100%**, or **Traffic Demo** with the joystick, any keyboard arrow pair, or physical E/B, then press C or keyboard Enter. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate, bearing and callsign fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -69,7 +69,9 @@ Plane Radar can leave your local position and follow a particular aircraft anywh
 
 ### Keepdexpansion input
 
-The Keepdexpansion is optional. If it is fitted and its keyboard app is running, **simply start typing a flight number or ADS-B callsign while the radar is visible**. Plane Radar opens the flight-search dialog and keeps the first character you typed. Enter remains equivalent to physical C for menus and location setup. Press Escape or physical F to close flight search.
+The Keepdexpansion is optional. If it is fitted and its keyboard app is running, **simply start typing a flight number or ADS-B callsign while the radar is visible**. Plane Radar opens the flight-search dialog and keeps the first character you typed. Enter submits the callsign and remains equivalent to physical C for menus and location setup. Press Escape or physical F to close flight search.
+
+On the normal radar, press keyboard **Down** to open a round-screen list of aircraft currently visible at the selected range. Each row shows its callsign and known origin/destination code. Use Up/Down, press Enter to begin following the highlighted aircraft, or press F/Escape to return. This shortcut is keyboard-only: physical Down continues to retry GPS/Wi-Fi positioning.
 
 Without a Keepdexpansion, press **Left + Right together** and enter the same value with Tildagon's normal text dialog.
 
@@ -86,7 +88,7 @@ Once a target is found, Plane Radar locks onto its Mode-S hex identity and:
 - updates the followed aircraft independently from the surrounding traffic;
 - alternates automatically every **5 seconds** between the radar and a flight-data page.
 
-The focused radar card shows callsign, route, altitude, groundspeed, bearing/track and squawk. The alternating data page adds the aircraft model/registration, vertical rate, Mode-S hex, route progress and distance remaining when those fields are available from the live feeds.
+The focused radar card uses larger, heavier text for its callsign, route, altitude, groundspeed, bearing/track and squawk. The alternating data page uses the same high-legibility treatment and adds the aircraft model/registration, vertical rate, Mode-S hex, route progress and distance remaining when those fields are available from the live feeds.
 
 While following:
 
@@ -112,7 +114,7 @@ While Plane Radar is foregrounded it temporarily takes control of Tildagon's 12 
 
 In normal/local radar mode:
 
-- an optional green sweep rotates clockwise around the badge (toggle it from Radar Options);
+- a green sweep rotates clockwise around the badge, enabled by default at 25% brightness (toggle it or choose 25/50/75/100% from Radar Options);
 - aircraft illuminate the LED sector matching their bearing on the radar;
 - closer in-range aircraft appear brighter red/magenta;
 - off-scale aircraft remain visible as dim magenta bearing cues;
@@ -217,7 +219,7 @@ python -m py_compile app.py radar_base.py postcode.py wifi_location.py flight_ap
 
 ## App Store package
 
-`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.2` is published as `v0.1.2`.
+`tildagon.toml` declares Wi-Fi plus optional Position-provider, RGB-hexpansion and 2026-frontboard enhancements. Release tags match the metadata version; for example, app version `0.1.3` is published as `v0.1.3`.
 
 The original C++ firmware remains in this fork to preserve upstream history and attribution, while `.gitattributes` excludes the original development tree and host tests from Tildagon release archives.
 
@@ -236,7 +238,7 @@ This removes only the manually copied app folder. Plane Radar's saved settings a
 
 The Tildagon port does not yet include the embedded major-airport runway overlay or the original browser configuration portal. The portal is unnecessary because Tildagon already manages Wi-Fi and app settings. The runway overlay can be ported independently later.
 
-Network requests currently use Tildagon's synchronous `requests` module, so a slow HTTPS request may briefly pause the UI during a poll.
+Network requests currently use Tildagon's synchronous `requests` module, so a slow HTTPS request may briefly pause the UI during a poll. The idle sweep clamps its animation step after a delayed frame so it resumes without leaping forward, although the display cannot redraw during the blocking request itself.
 
 ## Data and attribution
 

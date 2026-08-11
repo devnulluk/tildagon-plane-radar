@@ -22,6 +22,7 @@ try:
         max_rgb,
         pulse_level,
         red_chase_frame,
+        scale_rgb,
     )
     from .spaceagon import (
         angular_distance,
@@ -55,6 +56,7 @@ except ImportError:
         max_rgb,
         pulse_level,
         red_chase_frame,
+        scale_rgb,
     )
     from spaceagon import (
         angular_distance,
@@ -87,7 +89,7 @@ RANGE_PROFILE = 2
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
 COMPASS_UPDATE_MS = 200
-NORMAL_SPLASH_MS = 3000
+NORMAL_SPLASH_MS = 5000
 FIRST_SPLASH_MS = 5000
 SELECTION_MS = 7000
 TRAIL_POINTS = 20
@@ -108,6 +110,7 @@ DEFAULT_CONFIG = {
     "compass_zero": None,
     "manual_bearing": None,
     "led_sweep": True,
+    "led_sweep_brightness": 25,
 }
 
 BACKGROUND = (0.005, 0.045, 0.025)
@@ -295,6 +298,11 @@ class PlaneRadarApp(app.App):
         self.led_elapsed = LED_UPDATE_MS
         self.sweep_led = 1
         self.led_sweep = bool(self.config.get("led_sweep", True))
+        self.led_sweep_brightness = int(
+            self.config.get("led_sweep_brightness", 25)
+        )
+        if self.led_sweep_brightness not in (25, 50, 75, 100):
+            self.led_sweep_brightness = 25
         self.leds_active = False
         self._acquire_leds()
 
@@ -318,6 +326,7 @@ class PlaneRadarApp(app.App):
                 "compass_zero": self.compass_zero,
                 "manual_bearing": self.manual_bearing,
                 "led_sweep": self.led_sweep,
+                "led_sweep_brightness": self.led_sweep_brightness,
             }
         )
         _save_config(self.config)
@@ -812,7 +821,10 @@ class PlaneRadarApp(app.App):
                 (-2, (0, 6, 2)),
             ):
                 index = (self.sweep_led - 1 + offset) % 12
-                frame[index] = max_rgb(frame[index], colour)
+                frame[index] = max_rgb(
+                    frame[index],
+                    scale_rgb(colour, self.led_sweep_brightness),
+                )
 
         display_heading = self._display_heading()
         attention_pulse = pulse_level(now_ms)
@@ -1059,44 +1071,59 @@ class PlaneRadarApp(app.App):
             self.button_states.clear()
             self._finish_splash()
 
+    def _select_location_option(self):
+        """Activate the highlighted Radar Options item."""
+        self.button_states.clear()
+        self.view = "radar"
+        if self.location_choice == 0:
+            self._refresh_position(startup=False)
+        elif self.location_choice == 1:
+            self.setup_stage = "postcode"
+        elif self.location_choice == 2:
+            self.pending_lat = None
+            self.setup_stage = "lat"
+        elif self.location_choice == 3:
+            self.setup_stage = "bearing"
+        elif self.location_choice == 4:
+            self.led_sweep = not self.led_sweep
+            self._persist_preferences()
+            self.status = "LED sweep " + ("on" if self.led_sweep else "off")
+        elif self.location_choice == 5:
+            levels = (25, 50, 75, 100)
+            index = levels.index(self.led_sweep_brightness)
+            self.led_sweep_brightness = levels[(index + 1) % len(levels)]
+            self._persist_preferences()
+            self.status = "LED sweep {}%".format(self.led_sweep_brightness)
+        else:
+            self._start_traffic_demo()
+
     def _handle_location_setup_input(self):
         if (
             self.button_states.get(BUTTON_TYPES["LEFT"])
             or self.button_states.get(BUTTON_TYPES["UP"])
         ):
-            self.location_choice = (self.location_choice - 1) % 6
+            self.location_choice = (self.location_choice - 1) % 7
             self.button_states.clear()
         elif (
             self.button_states.get(BUTTON_TYPES["RIGHT"])
             or self.button_states.get(BUTTON_TYPES["DOWN"])
         ):
-            self.location_choice = (self.location_choice + 1) % 6
+            self.location_choice = (self.location_choice + 1) % 7
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
-            self.button_states.clear()
-            self.view = "radar"
-            if self.location_choice == 0:
-                self._refresh_position(startup=False)
-            elif self.location_choice == 1:
-                self.setup_stage = "postcode"
-            elif self.location_choice == 2:
-                self.pending_lat = None
-                self.setup_stage = "lat"
-            elif self.location_choice == 3:
-                self.setup_stage = "bearing"
-            elif self.location_choice == 4:
-                self.led_sweep = not self.led_sweep
-                self._persist_preferences()
-                self.status = "LED sweep " + ("on" if self.led_sweep else "off")
-            else:
-                self._start_traffic_demo()
+            self._select_location_option()
         elif self.button_states.get(BUTTON_TYPES["CANCEL"]):
             self.button_states.clear()
             self.view = "radar"
 
     def update(self, delta):
         self.label_elapsed = (self.label_elapsed + delta) % 6000
-        self.screen_sweep_elapsed = (self.screen_sweep_elapsed + delta) % 2400
+        # Network polling is synchronous on the badge. Do not let a slow poll
+        # turn the next frame into a large, visible sweep-angle jump.
+        animation_delta = min(delta, 80)
+        self.screen_sweep_elapsed = (
+            self.screen_sweep_elapsed + animation_delta
+        ) % 2400
         if not self.leds_active:
             self._acquire_leds()
 
@@ -1406,7 +1433,12 @@ class PlaneRadarApp(app.App):
             if trail_point is not None and trail_point[2] <= self.outer_km:
                 screen_trail.append(trail_point[:2])
         for index in range(1, len(screen_trail)):
-            strength = 0.22 + (0.68 * index / max(1, len(screen_trail) - 1))
+            # Retain the age fade, but keep older track segments readable on
+            # the tiny physical LCD (roughly halfway back towards full colour).
+            old_strength = 0.22 + (
+                0.68 * index / max(1, len(screen_trail) - 1)
+            )
+            strength = old_strength + (1.0 - old_strength) * 0.5
             trail_colour = (
                 colour[0] * strength,
                 colour[1] * strength,
@@ -1738,6 +1770,7 @@ class PlaneRadarApp(app.App):
                 else "NORTH-UP"
             ),
             "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
+            "LED LEVEL: {}%".format(self.led_sweep_brightness),
             "TRAFFIC DEMO",
         )
         ctx.font_size = 17

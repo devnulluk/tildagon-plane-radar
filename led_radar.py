@@ -35,6 +35,12 @@ def max_rgb(existing, new):
     return tuple(max(existing[i], new[i]) for i in range(3))
 
 
+def scale_rgb(colour, percent):
+    """Scale an integer RGB tuple by a clamped percentage."""
+    percent = max(0, min(100, int(percent)))
+    return tuple(int(channel) * percent // 100 for channel in colour)
+
+
 def pulse_level(now_ms, period_ms=2400, minimum=28):
     """Return a smooth integer pulse level from minimum to 100."""
     period_ms = max(2, int(period_ms))
