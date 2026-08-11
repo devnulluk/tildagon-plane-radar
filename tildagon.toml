@@ -11,7 +11,7 @@ author = "devnulluk"
 license = "MIT"
 url = "https://github.com/devnulluk/tildagon-plane-radar"
 description = "Live aircraft radar with flexible location, flight following, fading trails and LED alerts."
-version = "0.1.2"
+version = "0.1.3"
 
 [[metadata.capabilities]]
 required = false

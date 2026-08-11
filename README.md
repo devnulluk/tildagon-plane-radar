@@ -17,7 +17,7 @@ This is a native MicroPython port of [MatixYo/ESP32-Plane-Radar](https://github.
 - optional origin/destination labels from [adsbdb.com](https://www.adsbdb.com/)
 - flight-follow mode with route, progress and aircraft details
 - emergency-squawk focus with a fast twin-red chase around the LED ring
-- saved manual badge bearing, configurable green LED sweep and bearing-aligned traffic lights
+- saved manual badge bearing, configurable green LED sweep brightness and bearing-aligned traffic lights
 - optional Keepdexpansion keyboard and Spaceagon controls
 - compatible with the original 2024 Tildagon without either expansion
 
@@ -45,7 +45,7 @@ On startup, Plane Radar tries location sources in this order:
 
 A rough Wi-Fi result is clearly labelled before use. Press **C** to open Radar Options and choose automatic location, UK postcode, decimal coordinates, manual badge bearing, or the LED-sweep setting. Postcodes are resolved through [Postcodes.io](https://postcodes.io/) without an API key.
 
-Press **B/Right during the splash screen** to open the animated Traffic Guide. It introduces the recognised colours and aircraft symbols one by one, ending with a clearly simulated 7700 focus; the same guide is always available from Radar Options.
+The splash remains visible for about five seconds. Press **B/Right during the splash screen** to open the animated Traffic Guide. It introduces the recognised colours and aircraft symbols one by one, ending with a clearly simulated 7700 focus; the same guide is always available from Radar Options.
 
 ## Controls
 
@@ -59,7 +59,7 @@ Press **B/Right during the splash screen** to open the animated Traffic Guide. I
 | Left + Right | Open Follow Flight |
 | F / Back | Minimise or return |
 
-Keyboard arrows and Enter work in menus and entry screens. With Keepdexpansion, start typing a callsign or flight number directly from the radar; Escape goes back.
+Keyboard arrows and Enter work in menus and entry screens. With Keepdexpansion, start typing a callsign or flight number directly from the radar and submit with Enter; Escape goes back. Press keyboard **Down** on the normal radar to open a selectable list of visible aircraft and their known routes, then press Enter to follow one. Physical Down retains its location-refresh action.
 
 The default range is 10 km, with 2, 5, 10 and 15 km options. Spaceagon proximity controls can adjust the range, touch sensors can select traffic by direction, and its joystick maps to the standard controls.
 
@@ -67,7 +67,7 @@ The bottom card shows the current zoom rather than a traffic count. With no airc
 
 ## Flight following and emergencies
 
-Follow Flight accepts an operational callsign or many familiar passenger flight numbers. When the aircraft is found, the radar follows it and alternates with a flight-information screen. Available route data is approximate and may be absent or incorrect.
+Follow Flight accepts an operational callsign or many familiar passenger flight numbers. When the aircraft is found, the radar follows it and alternates with a larger, heavier flight-information screen. Available route data is approximate and may be absent or incorrect.
 
 The local radar watches the standard `7500`, `7600` and `7700` squawks. It also makes a lightweight regional check for `7700` aircraft within 500 km. An alert enters focused flight-following: the aircraft stays centred, surrounding traffic remains as dim unlabeled context, and the radar alternates with its flight details. A fast pair of opposing red comets circles the LED ring, visibly distinct from the slower, broader military sweep. Typing `7700` in Follow Flight simulates the feature with a visible aircraft for testing.
 
