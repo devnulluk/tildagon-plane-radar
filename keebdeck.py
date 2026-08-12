@@ -1,5 +1,7 @@
 """Optional Keepdexpansion discovery and RGB-backlight helpers."""
 
+import time
+
 MERGED_NEOPIXELS = (
     "https://tildagon.badge.emfcamp.org/capabilities/registry/merged_neopixels/"
 )
@@ -36,10 +38,23 @@ class KeebDeckLights:
         self.active = False
         self.saved_colours = None
         self.saved_follow_pattern = None
+        self.last_attempt_ms = None
+
+    def _retry_ready(self):
+        now_ms = _ticks_ms()
+        if (
+            self.last_attempt_ms is not None
+            and _ticks_diff(now_ms, self.last_attempt_ms) < 2000
+        ):
+            return False
+        self.last_attempt_ms = now_ms
+        return True
 
     def acquire(self):
         if self.active:
             return True
+        if not self._retry_ready():
+            return False
         provider = find_keebdeck()
         if provider is None:
             return False
@@ -57,6 +72,7 @@ class KeebDeckLights:
             provider.led_owner = self.app_instance
             self.provider = provider
             self.active = True
+            self.last_attempt_ms = None
             return True
         except Exception:
             self.provider = None
@@ -107,35 +123,29 @@ class KeebDeckLights:
             self.release()
             return False
 
-    def paint(self, progress=None, locked=True, pulse=False):
-        """Show tracking state and route progress when it is known."""
+    def count(self):
+        """Return the driver's logical RGB-zone count, acquiring if needed."""
         if not self.active and not self.acquire():
-            return False
+            return 0
         try:
-            count = int(getattr(self.provider.leds, "n", 0))
+            return max(0, int(getattr(self.provider.leds, "n", 0)))
         except Exception:
-            count = 0
-        if count <= 0:
-            return False
+            self.release()
+            return 0
 
-        if not locked:
-            level = 70 if pulse else 18
-            return self._write([(level, 0, 0)] * count)
-
-        if progress is None:
-            level = 80 if pulse else 32
-            return self._write([(0, level, level)] * count)
-
-        progress = max(0.0, min(1.0, float(progress)))
-        scaled = progress * count
-        colours = []
-        for index in range(count):
-            if index + 1 <= scaled:
-                colours.append((0, 72, 44))
-            elif index <= scaled < index + 1:
-                colours.append((15, 105 if pulse else 70, 115 if pulse else 80))
-            else:
-                colours.append((0, 0, 8))
-        if progress >= 1.0:
-            colours[-1] = (30, 110, 55) if pulse else (0, 78, 40)
+    def write(self, colours):
+        """Public frame writer used by the Hexpansion cockpit."""
         return self._write(colours)
+
+def _ticks_ms():
+    try:
+        return time.ticks_ms()
+    except AttributeError:
+        return int(time.time() * 1000)
+
+
+def _ticks_diff(current, previous):
+    try:
+        return time.ticks_diff(current, previous)
+    except AttributeError:
+        return current - previous
