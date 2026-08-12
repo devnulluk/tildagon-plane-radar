@@ -47,6 +47,8 @@ try:
     from .route_lookup import build_route_lookup_url, parse_route_label
     from .hexpansion_cockpit import (
         HexpansionCockpit,
+        KEYBOARD_BRIGHTNESS_LEVELS,
+        LOGO_BRIGHTNESS_LEVELS,
         logo_port_label,
         next_logo_port,
         normalise_logo_port,
@@ -87,6 +89,8 @@ except ImportError:
     from route_lookup import build_route_lookup_url, parse_route_label
     from hexpansion_cockpit import (
         HexpansionCockpit,
+        KEYBOARD_BRIGHTNESS_LEVELS,
+        LOGO_BRIGHTNESS_LEVELS,
         logo_port_label,
         next_logo_port,
         normalise_logo_port,
@@ -100,7 +104,7 @@ DEFAULT_RANGE_INDEX = 2
 RANGE_PROFILE = 2
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
-RADAR_OPTION_COUNT = 10
+RADAR_OPTION_COUNT = 11
 COMPASS_UPDATE_MS = 200
 NORMAL_SPLASH_MS = 5000
 FIRST_SPLASH_MS = 5000
@@ -125,7 +129,8 @@ DEFAULT_CONFIG = {
     "led_sweep": True,
     "led_sweep_brightness": 25,
     "hexpansion_fx": True,
-    "hexpansion_brightness": 25,
+    "keyboard_brightness": 100,
+    "eeh_logo_brightness": 10,
     "eeh_logo_port": "auto",
 }
 
@@ -320,11 +325,18 @@ class PlaneRadarApp(app.App):
         if self.led_sweep_brightness not in (25, 50, 75, 100):
             self.led_sweep_brightness = 25
         self.hexpansion_fx = bool(self.config.get("hexpansion_fx", True))
+        # This intentionally uses a new key: older releases shared a dim 25%
+        # level with the much brighter Logo.  Keyboard alerts now start at 100%.
         self.hexpansion_brightness = int(
-            self.config.get("hexpansion_brightness", 25)
+            self.config.get("keyboard_brightness", 100)
         )
-        if self.hexpansion_brightness not in (25, 50, 75, 100):
-            self.hexpansion_brightness = 25
+        if self.hexpansion_brightness not in KEYBOARD_BRIGHTNESS_LEVELS:
+            self.hexpansion_brightness = 100
+        self.eeh_logo_brightness = int(
+            self.config.get("eeh_logo_brightness", 10)
+        )
+        if self.eeh_logo_brightness not in LOGO_BRIGHTNESS_LEVELS:
+            self.eeh_logo_brightness = 10
         self.eeh_logo_port = normalise_logo_port(
             self.config.get("eeh_logo_port", "auto")
         )
@@ -332,6 +344,7 @@ class PlaneRadarApp(app.App):
             self,
             enabled=self.hexpansion_fx,
             brightness=self.hexpansion_brightness,
+            logo_brightness=self.eeh_logo_brightness,
             logo_port=self.eeh_logo_port,
         )
         self.leds_active = False
@@ -346,6 +359,8 @@ class PlaneRadarApp(app.App):
         return _outer_range_km(self.ring_label_km)
 
     def _persist_preferences(self):
+        if "hexpansion_brightness" in self.config:
+            del self.config["hexpansion_brightness"]
         self.config.update(
             {
                 "lat": self.manual_lat,
@@ -359,7 +374,8 @@ class PlaneRadarApp(app.App):
                 "led_sweep": self.led_sweep,
                 "led_sweep_brightness": self.led_sweep_brightness,
                 "hexpansion_fx": self.hexpansion_fx,
-                "hexpansion_brightness": self.hexpansion_brightness,
+                "keyboard_brightness": self.hexpansion_brightness,
+                "eeh_logo_brightness": self.eeh_logo_brightness,
                 "eeh_logo_port": self.eeh_logo_port,
             }
         )
@@ -939,12 +955,16 @@ class PlaneRadarApp(app.App):
         self.sweep_led = self.sweep_led % 12 + 1
 
     def _update_hexpansion_lights(self, now_ms):
-        """Mirror radar state onto optional keyboard and EEH Logo lights."""
+        """Use expansions for startup ambience and exceptional traffic only."""
         self.hexpansion_cockpit.configure(
             self.hexpansion_fx,
             self.hexpansion_brightness,
+            self.eeh_logo_brightness,
             self.eeh_logo_port,
         )
+        if self.view in ("splash", "instructions"):
+            self.hexpansion_cockpit.show_startup(now_ms)
+            return
         if self.view == "traffic_demo":
             stage = DEMO_STAGES[self.demo_stage]
             self.hexpansion_cockpit.show_demo(
@@ -952,7 +972,16 @@ class PlaneRadarApp(app.App):
             )
             return
 
-        traffic = []
+        attention_colours = self._visible_attention_colours()
+        if attention_colours:
+            self.hexpansion_cockpit.show_highlight(
+                attention_colours, False, now_ms
+            )
+        else:
+            self.hexpansion_cockpit.show_idle(now_ms)
+
+    def _visible_attention_colours(self):
+        """Return unique special-traffic colours currently inside the radar."""
         attention_colours = []
         if self.center_lat is not None and self.center_lon is not None:
             for item in self.aircraft:
@@ -965,21 +994,12 @@ class PlaneRadarApp(app.App):
                 )
                 if distance > self.outer_km:
                     continue
-                colour = self._aircraft_colour(item)
-                rgb = tuple(
-                    max(0, min(255, int(channel * 220))) for channel in colour
-                )
-                traffic.append((distance, rgb))
                 attention = item.get("attention", "")
                 if attention:
                     alert_colour = self._attention_led_colour(attention)
                     if alert_colour not in attention_colours:
                         attention_colours.append(alert_colour)
-
-        traffic.sort(key=lambda contact: contact[0])
-        self.hexpansion_cockpit.show_local(
-            [contact[1] for contact in traffic], attention_colours, now_ms
-        )
+        return attention_colours
 
     def minimise(self):
         self.hexpansion_cockpit.release()
@@ -1182,30 +1202,47 @@ class PlaneRadarApp(app.App):
             self.hexpansion_cockpit.configure(
                 self.hexpansion_fx,
                 self.hexpansion_brightness,
+                self.eeh_logo_brightness,
                 self.eeh_logo_port,
             )
             self.status = "Hexpansion effects " + (
                 "on" if self.hexpansion_fx else "off"
             )
         elif self.location_choice == 7:
-            levels = (25, 50, 75, 100)
+            levels = KEYBOARD_BRIGHTNESS_LEVELS
             index = levels.index(self.hexpansion_brightness)
             self.hexpansion_brightness = levels[(index + 1) % len(levels)]
             self._persist_preferences()
             self.hexpansion_cockpit.configure(
                 self.hexpansion_fx,
                 self.hexpansion_brightness,
+                self.eeh_logo_brightness,
                 self.eeh_logo_port,
             )
             self.status = "Hexpansion lights {}%".format(
                 self.hexpansion_brightness
             )
         elif self.location_choice == 8:
+            levels = LOGO_BRIGHTNESS_LEVELS
+            index = levels.index(self.eeh_logo_brightness)
+            self.eeh_logo_brightness = levels[(index + 1) % len(levels)]
+            self._persist_preferences()
+            self.hexpansion_cockpit.configure(
+                self.hexpansion_fx,
+                self.hexpansion_brightness,
+                self.eeh_logo_brightness,
+                self.eeh_logo_port,
+            )
+            self.status = "EEH Logo lights {}%".format(
+                self.eeh_logo_brightness
+            )
+        elif self.location_choice == 9:
             self.eeh_logo_port = next_logo_port(self.eeh_logo_port)
             self._persist_preferences()
             self.hexpansion_cockpit.configure(
                 self.hexpansion_fx,
                 self.hexpansion_brightness,
+                self.eeh_logo_brightness,
                 self.eeh_logo_port,
             )
             self.status = "EEH Logo " + logo_port_label(self.eeh_logo_port)
@@ -1891,7 +1928,8 @@ class PlaneRadarApp(app.App):
             "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
             "LED LEVEL: {}%".format(self.led_sweep_brightness),
             "HEX FX: " + ("ON" if self.hexpansion_fx else "OFF"),
-            "HEX LEVEL: {}%".format(self.hexpansion_brightness),
+            "KEY LEVEL: {}%".format(self.hexpansion_brightness),
+            "LOGO LEVEL: {}%".format(self.eeh_logo_brightness),
             "EEH LOGO: " + logo_port_label(self.eeh_logo_port),
             "TRAFFIC DEMO",
         )

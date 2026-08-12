@@ -13,6 +13,7 @@ try:
     from .led_radar import (
         colour_sweep_frame,
         cycled_colour_sweep_frame,
+        max_rgb,
         pulse_level,
         red_chase_frame,
         scale_rgb,
@@ -22,6 +23,7 @@ except ImportError:
     from led_radar import (
         colour_sweep_frame,
         cycled_colour_sweep_frame,
+        max_rgb,
         pulse_level,
         red_chase_frame,
         scale_rgb,
@@ -30,6 +32,8 @@ except ImportError:
 
 EEH_LOGO_PIXELS = 14
 EEH_LOGO_TYPE = "EEH Logo"
+KEYBOARD_BRIGHTNESS_LEVELS = (25, 50, 75, 100)
+LOGO_BRIGHTNESS_LEVELS = (5, 10, 25, 50, 75, 100)
 LOGO_PORT_CHOICES = ("auto", "off", 1, 2, 3, 4, 5, 6)
 PORT_PINS = {1: 39, 2: 35, 3: 34, 4: 11, 5: 18, 6: 3}
 
@@ -86,50 +90,43 @@ def configured_logo_port(preference="auto", settings_module=None):
     return None
 
 
-def traffic_meter_frame(count, colours, now_ms=0):
-    """One segment per visible aircraft; animate when the meter overflows."""
+def startup_frame(count, now_ms=0):
+    """A bright green radar flourish used only while Plane Radar starts."""
+    count = max(1, int(count))
+    return colour_sweep_frame(count, now_ms, (0, 220, 48), step_ms=150)
+
+
+def highlight_field_frame(count, colours, now_ms=0):
+    """Fill an expansion with one calm, unmistakable highlight colour."""
     count = max(1, int(count))
     colours = [tuple(colour) for colour in colours]
     if not colours:
-        return colour_sweep_frame(count, now_ms, (0, 120, 24), step_ms=150)
-
-    frame = [(0, 2, 1) for _ in range(count)]
-    overflow = len(colours) > count
-    if overflow:
-        start = int(now_ms // 900) % len(colours)
-        colours = (colours[start:] + colours[:start])[:count]
-        strength = pulse_level(now_ms, period_ms=2200, minimum=65)
-    else:
-        colours = colours[:count]
-        strength = 100
-
-    for index, colour in enumerate(colours):
-        scaled = tuple(int(channel) * strength // 100 for channel in colour)
-        frame[index] = scaled
-    return frame
+        return [(0, 0, 0) for _ in range(count)]
+    colour_ms = 2200
+    colour = colours[int(now_ms // colour_ms) % len(colours)]
+    level = pulse_level(now_ms, period_ms=2200, minimum=55)
+    lit = scale_rgb(colour, level)
+    return [lit for _ in range(count)]
 
 
-def follow_progress_frame(count, progress=None, locked=True, now_ms=0):
-    """Build route-progress, indeterminate-lock or lost-target lighting."""
+def ambient_logo_frame(count, now_ms=0):
+    """Two smooth, counter-moving aurora glows with no data semantics."""
     count = max(1, int(count))
-    level = pulse_level(now_ms, period_ms=1800, minimum=22)
-    if not locked:
-        return [(level * 92 // 100, 0, 0) for _ in range(count)]
-    if progress is None:
-        return [(0, level * 80 // 100, level) for _ in range(count)]
-
-    progress = max(0.0, min(1.0, float(progress)))
-    scaled_progress = progress * count
-    frame = []
+    clockwise = (int(now_ms) % 7000) * count / 7000.0
+    counter = (-((int(now_ms) % 9000) * count / 9000.0)) % count
+    frame = [(0, 3, 2) for _ in range(count)]
     for index in range(count):
-        if index + 1 <= scaled_progress:
-            frame.append((0, 105, 58))
-        elif index <= scaled_progress < index + 1:
-            frame.append((20, 150, 175))
-        else:
-            frame.append((0, 0, 14))
-    if progress >= 1.0:
-        frame[-1] = (30, 150, 72)
+        for position, colour, width in (
+            (clockwise, (0, 150, 72), 2.8),
+            (counter, (0, 62, 170), 2.2),
+        ):
+            distance = abs(index - position)
+            distance = min(distance, count - distance)
+            if distance >= width:
+                continue
+            strength = int((width - distance) * 100 / width)
+            glow = tuple(channel * strength // 100 for channel in colour)
+            frame[index] = max_rgb(frame[index], glow)
     return frame
 
 
@@ -225,7 +222,7 @@ class EEHLogoLights:
             self.last_attempt_ms = None
             self.conflict_reported = False
             self.unavailable_reported = False
-            print("plane-radar: EEH Logo cockpit on port", port)
+            print("plane-radar: EEH Logo lighting on port", port)
             return True
         except Exception as exc:
             if not self.unavailable_reported:
@@ -272,41 +269,61 @@ class EEHLogoLights:
         except Exception:
             pass
 
+    def release_to_controller(self):
+        """Yield immediately when the official EEH controller is available."""
+        if not _eeh_controller_running():
+            return False
+        self.release(clear=False)
+        return True
+
 
 class HexpansionCockpit:
-    """Synchronise keyboard and EEH Logo with the radar's current state."""
+    """Provide startup, ambient and exceptional-traffic expansion lighting."""
 
     def __init__(
         self,
         app_instance,
         enabled=True,
-        brightness=25,
+        brightness=100,
+        logo_brightness=10,
         logo_port="auto",
     ):
         self.keyboard = KeebDeckLights(app_instance)
         self.logo = EEHLogoLights(logo_port)
         self.enabled = bool(enabled)
-        self.brightness = self._normalise_brightness(brightness)
+        self.brightness = self._normalise_keyboard_brightness(brightness)
+        self.logo_brightness = self._normalise_logo_brightness(logo_brightness)
         self.last_keyboard_frame = None
         self.last_logo_frame = None
 
     @staticmethod
-    def _normalise_brightness(value):
+    def _normalise_keyboard_brightness(value):
         try:
             value = int(value)
         except (TypeError, ValueError):
-            value = 25
-        return value if value in (25, 50, 75, 100) else 25
+            value = 100
+        return value if value in KEYBOARD_BRIGHTNESS_LEVELS else 100
 
-    def configure(self, enabled, brightness, logo_port):
+    @staticmethod
+    def _normalise_logo_brightness(value):
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 10
+        return value if value in LOGO_BRIGHTNESS_LEVELS else 10
+
+    def configure(self, enabled, brightness, logo_brightness, logo_port):
         was_enabled = self.enabled
         old_brightness = self.brightness
+        old_logo_brightness = self.logo_brightness
         self.enabled = bool(enabled)
-        self.brightness = self._normalise_brightness(brightness)
+        self.brightness = self._normalise_keyboard_brightness(brightness)
+        self.logo_brightness = self._normalise_logo_brightness(logo_brightness)
         old_logo_port = self.logo.port_preference
         self.logo.configure(logo_port)
         if old_brightness != self.brightness:
             self.last_keyboard_frame = None
+        if old_logo_brightness != self.logo_brightness:
             self.last_logo_frame = None
         if old_logo_port != self.logo.port_preference:
             self.last_logo_frame = None
@@ -319,52 +336,70 @@ class HexpansionCockpit:
         self.last_keyboard_frame = None
         self.last_logo_frame = None
 
-    def _write_frames(self, frame_builder):
+    def _write_keyboard(self, frame_builder):
+        keyboard_was_active = bool(getattr(self.keyboard, "active", False))
+        keyboard_count = self.keyboard.count()
+        if not keyboard_count:
+            return
+        if not keyboard_was_active:
+            self.last_keyboard_frame = None
+        frame = scale_frame(frame_builder(keyboard_count), self.brightness)
+        if frame != self.last_keyboard_frame and self.keyboard.write(frame):
+            self.last_keyboard_frame = frame
+
+    def _write_logo(self, frame_builder):
+        logo_was_active = bool(getattr(self.logo, "active", False))
+        logo_count = self.logo.count()
+        if not logo_count:
+            return
+        if not logo_was_active:
+            self.last_logo_frame = None
+        frame = scale_frame(frame_builder(logo_count), self.logo_brightness)
+        if frame != self.last_logo_frame and self.logo.write(frame):
+            self.last_logo_frame = frame
+
+    def _write_frames(self, keyboard_builder, logo_builder=None):
         if not self.enabled:
             self.release()
             return
-        keyboard_was_active = bool(getattr(self.keyboard, "active", False))
-        keyboard_count = self.keyboard.count()
-        if keyboard_count:
-            if not keyboard_was_active:
-                self.last_keyboard_frame = None
-            frame = scale_frame(frame_builder(keyboard_count), self.brightness)
-            if frame != self.last_keyboard_frame and self.keyboard.write(frame):
-                self.last_keyboard_frame = frame
-        logo_was_active = bool(getattr(self.logo, "active", False))
-        logo_count = self.logo.count()
-        if logo_count:
-            if not logo_was_active:
-                self.last_logo_frame = None
-            frame = scale_frame(frame_builder(logo_count), self.brightness)
-            if frame != self.last_logo_frame and self.logo.write(frame):
-                self.last_logo_frame = frame
+        self._write_keyboard(keyboard_builder)
+        self._write_logo(logo_builder or keyboard_builder)
 
-    def show_local(self, traffic_colours, attention_colours, now_ms):
-        if attention_colours:
-            def build(count):
-                return cycled_colour_sweep_frame(
-                    count, attention_colours, now_ms, colour_ms=1800, step_ms=120
-                )
+    def show_startup(self, now_ms):
+        self._write_frames(lambda count: startup_frame(count, now_ms))
+
+    def show_idle(self, now_ms):
+        """Restore the keyboard and yield the Logo, or show calm ambience."""
+        if not self.enabled:
+            self.release()
+            return
+        self.keyboard.release()
+        self.last_keyboard_frame = None
+        if self.logo.release_to_controller():
+            self.last_logo_frame = None
+            return
+        self._write_logo(lambda count: ambient_logo_frame(count, now_ms))
+
+    def show_highlight(self, colours, emergency, now_ms):
+        colours = [tuple(colour) for colour in colours]
+        if emergency:
+            colours = [(220, 0, 15)]
+        if not colours:
+            self.show_idle(now_ms)
+            return
+
+        def keyboard_build(count):
+            return highlight_field_frame(count, colours, now_ms)
+
+        if emergency:
+            def logo_build(count):
+                return red_chase_frame(count, now_ms)
         else:
-            def build(count):
-                return traffic_meter_frame(count, traffic_colours, now_ms)
-        self._write_frames(build)
+            def logo_build(count):
+                return cycled_colour_sweep_frame(
+                    count, colours, now_ms, colour_ms=2200, step_ms=150
+                )
+        self._write_frames(keyboard_build, logo_build)
 
     def show_demo(self, colour, emergency, now_ms):
-        if emergency:
-            def build(count):
-                return red_chase_frame(count, now_ms)
-        else:
-            def build(count):
-                return colour_sweep_frame(count, now_ms, colour, step_ms=120)
-        self._write_frames(build)
-
-    def show_follow(self, progress, locked, emergency, now_ms):
-        if emergency:
-            def build(count):
-                return red_chase_frame(count, now_ms)
-        else:
-            def build(count):
-                return follow_progress_frame(count, progress, locked, now_ms)
-        self._write_frames(build)
+        self.show_highlight([colour], emergency, now_ms)

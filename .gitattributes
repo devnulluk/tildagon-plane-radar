@@ -9,6 +9,8 @@
 /.vscode/** export-ignore
 /data export-ignore
 /data/** export-ignore
+/docs export-ignore
+/docs/** export-ignore
 /include export-ignore
 /include/** export-ignore
 /partitions export-ignore

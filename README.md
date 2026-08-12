@@ -18,10 +18,18 @@ This is a native MicroPython port of [MatixYo/ESP32-Plane-Radar](https://github.
 - flight-follow mode with route, progress and aircraft details
 - emergency-squawk focus with a fast twin-red chase around the LED ring
 - saved manual badge bearing, configurable green LED sweep brightness and bearing-aligned traffic lights
-- optional Keepdexpansion RGB traffic meter, 14-pixel EEH Logo cockpit and Spaceagon controls
+- optional Keepdexpansion alert lighting, ambient EEH Logo and Spaceagon controls
 - compatible with the original 2024 Tildagon without any expansion
 
 Plane Radar is a fun visualisation, not an authoritative air-traffic or emergency-alert system.
+
+## Screenshots
+
+| Live radar | Animated Traffic Guide |
+|---|---|
+| ![Plane Radar showing classified nearby aircraft on the Tildagon simulator](docs/screenshots/live-radar.png) | ![Plane Radar animated Traffic Guide on the Tildagon simulator](docs/screenshots/traffic-guide.png) |
+| Emergency flight following | Large flight details |
+| ![Plane Radar following a simulated squawk 7700 aircraft](docs/screenshots/emergency-follow.png) | ![Plane Radar large-text flight information screen](docs/screenshots/flight-details.png) |
 
 ## Install
 
@@ -65,11 +73,13 @@ The default range is 10 km, with 2, 5, 10 and 15 km options. Spaceagon proximity
 
 The bottom card shows the current zoom rather than a traffic count. With no aircraft in range, a brighter green on-screen sweep keeps the empty radar visibly active. Commercial/civilian traffic uses the familiar filled triangle; GA uses a hollow diamond, helicopters a rotor symbol, and military aircraft a broad delta when the ADS-B feed supplies enough classification data.
 
-## Hexpansion cockpit
+## Hexpansion lighting
 
-Plane Radar can turn the Keepdexpansion RGB keyboard and the 14-pixel East Essex Hackspace Logo into a second instrument panel. In local mode, one logical light segment represents each visible aircraft, nearest first; an overflowing display gently rotates through the extra traffic. Empty airspace gets a green scanner. Special traffic sweeps in its green, blue, red or amber colour, Follow Flight becomes a teal/cyan journey bar, and a 7700 focus uses the same twin-red chase as the badge ring. The animated Traffic Guide drives the expansion lights too.
+Plane Radar deliberately does not turn the optional Keepdexpansion keyboard or 14-pixel East Essex Hackspace Logo into another traffic display. Ordinary aircraft do not claim either expansion. During startup, available unclaimed lights show a short green radar flourish. Plane Radar then restores the keyboard's previous colour or pattern.
 
-These effects default to **on at 25% brightness** and are independent of the onboard LED sweep. Use **Radar Options > Hex FX / Hex Level** to disable or brighten them. The keyboard is detected through its normal shared-light driver and its previous colour/pattern is restored when Plane Radar releases it.
+The EEH Logo is handed straight back whenever its official background controller is running. If no controller is available and Plane Radar has an explicitly configured Logo port, it falls back to a slow green-and-cyan aurora orbit with no data meaning. Genuine highlighted traffic temporarily takes over both available expansions: green for air ambulance, blue for police, red for military and amber for other interesting traffic. The keyboard becomes a calm full-colour field; the Logo sweeps that colour. A 7700 focus uses red alert lighting and the Logo's twin-red chase. The animated Traffic Guide previews the same alerts.
+
+These effects are independent of the onboard LED sweep. They default to **100% for the keyboard** and a gentler **10% for the EEH Logo**. Use **Radar Options > Hex FX / Key Level / Logo Level** to disable them or set their peak brightness separately; the Logo offers 5%, 10%, 25%, 50%, 75% and 100%.
 
 For the EEH Logo, **Auto** honours the port already saved by the official EEH NeoPixel controller. If that has not been configured, **EEH Logo** can cycle through Off and Ports 1–6. Select a manual port only when you know the 14-pixel Logo is connected there; Plane Radar never guesses or probes an unknown Hexpansion port.
 

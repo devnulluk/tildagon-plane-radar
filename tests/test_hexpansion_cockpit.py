@@ -6,12 +6,13 @@ from unittest.mock import patch
 from hexpansion_cockpit import (
     HexpansionCockpit,
     EEHLogoLights,
+    ambient_logo_frame,
     configured_logo_port,
-    follow_progress_frame,
+    highlight_field_frame,
     logo_port_label,
     next_logo_port,
     normalise_logo_port,
-    traffic_meter_frame,
+    startup_frame,
 )
 from keebdeck import KeebDeckLights
 
@@ -53,6 +54,8 @@ class FakeOutput:
         self.frames = []
         self.releases = 0
         self.active = True
+        self.port_preference = "auto"
+        self.controller_available = False
 
     def count(self):
         return self.pixel_count
@@ -65,8 +68,14 @@ class FakeOutput:
         self.releases += 1
         self.active = False
 
-    def configure(self, _value):
-        pass
+    def configure(self, value):
+        self.port_preference = value
+
+    def release_to_controller(self):
+        if not self.controller_available:
+            return False
+        self.release()
+        return True
 
 
 class HexpansionHelperTests(unittest.TestCase):
@@ -85,51 +94,85 @@ class HexpansionHelperTests(unittest.TestCase):
         self.assertEqual(next_logo_port(6), "auto")
         self.assertEqual(logo_port_label(3), "PORT 3")
 
-    def test_empty_airspace_has_a_moving_green_scanner(self):
-        first = traffic_meter_frame(5, [], 0)
-        second = traffic_meter_frame(5, [], 150)
+    def test_startup_has_a_moving_green_scanner(self):
+        first = startup_frame(5, 0)
+        second = startup_frame(5, 150)
         self.assertNotEqual(first, second)
-        self.assertEqual(first[0], (0, 120, 24))
-        self.assertEqual(second[1], (0, 120, 24))
+        self.assertEqual(first[0], (0, 220, 48))
+        self.assertEqual(second[1], (0, 220, 48))
 
-    def test_traffic_meter_uses_one_segment_per_aircraft(self):
-        frame = traffic_meter_frame(5, [(100, 0, 0), (0, 100, 0)], 0)
-        self.assertEqual(frame[0], (100, 0, 0))
-        self.assertEqual(frame[1], (0, 100, 0))
-        self.assertEqual(frame[2:], [(0, 2, 1)] * 3)
+    def test_highlight_is_a_calm_full_colour_field(self):
+        frame = highlight_field_frame(5, [(0, 180, 45)], 1100)
+        self.assertEqual(frame, [(0, 180, 45)] * 5)
 
-    def test_overflow_rotates_through_extra_aircraft(self):
-        colours = [(index * 10, 0, 0) for index in range(1, 8)]
-        first = traffic_meter_frame(5, colours, 0)
-        rotated = traffic_meter_frame(5, colours, 900)
-        self.assertEqual(len(first), 5)
-        self.assertNotEqual(first, rotated)
-
-    def test_route_progress_and_lost_target_are_visually_distinct(self):
-        route = follow_progress_frame(5, 0.5, True, 0)
-        lost = follow_progress_frame(5, None, False, 0)
-        self.assertEqual(route[:2], [(0, 105, 58), (0, 105, 58)])
-        self.assertEqual(route[2], (20, 150, 175))
-        self.assertTrue(all(colour[0] > 0 for colour in lost))
-        self.assertTrue(all(colour[1:] == (0, 0) for colour in lost))
+    def test_idle_logo_aurora_moves_without_encoding_traffic(self):
+        first = ambient_logo_frame(14, 0)
+        second = ambient_logo_frame(14, 500)
+        self.assertEqual(len(first), 14)
+        self.assertNotEqual(first, second)
 
     def test_cockpit_scales_each_device_to_selected_brightness(self):
-        cockpit = HexpansionCockpit(object(), brightness=25)
+        cockpit = HexpansionCockpit(
+            object(), brightness=25, logo_brightness=10
+        )
         cockpit.keyboard = FakeOutput(5)
         cockpit.logo = FakeOutput(14)
-        cockpit.show_local([(200, 100, 40)], [], 0)
-        self.assertEqual(cockpit.keyboard.frames[-1][0], (50, 25, 10))
+        cockpit.show_startup(0)
+        self.assertEqual(cockpit.keyboard.frames[-1][0], (0, 55, 12))
+        self.assertEqual(cockpit.logo.frames[-1][0], (0, 22, 4))
         self.assertEqual(len(cockpit.keyboard.frames[-1]), 5)
         self.assertEqual(len(cockpit.logo.frames[-1]), 14)
+
+    def test_cockpit_defaults_keyboard_to_full_and_logo_to_ten_percent(self):
+        cockpit = HexpansionCockpit(object())
+        cockpit.keyboard = FakeOutput(5)
+        cockpit.logo = FakeOutput(14)
+        cockpit.show_startup(0)
+        self.assertEqual(cockpit.keyboard.frames[-1][0], (0, 220, 48))
+        self.assertEqual(cockpit.logo.frames[-1][0], (0, 22, 4))
 
     def test_identical_static_frames_are_not_rewritten(self):
         cockpit = HexpansionCockpit(object(), brightness=25)
         cockpit.keyboard = FakeOutput(5)
         cockpit.logo = FakeOutput(14)
-        cockpit.show_local([(200, 100, 40)], [], 0)
-        cockpit.show_local([(200, 100, 40)], [], 100)
+        cockpit.show_highlight([(200, 100, 40)], False, 1100)
+        cockpit.show_highlight([(200, 100, 40)], False, 1100)
         self.assertEqual(len(cockpit.keyboard.frames), 1)
         self.assertEqual(len(cockpit.logo.frames), 1)
+
+    def test_logo_brightness_changes_independently_from_keyboard(self):
+        cockpit = HexpansionCockpit(
+            object(), brightness=25, logo_brightness=10
+        )
+        cockpit.keyboard = FakeOutput(5)
+        cockpit.logo = FakeOutput(14)
+        cockpit.show_startup(0)
+        cockpit.configure(True, 25, 5, "auto")
+        cockpit.show_startup(0)
+        self.assertEqual(len(cockpit.keyboard.frames), 1)
+        self.assertEqual(cockpit.keyboard.frames[-1][0], (0, 55, 12))
+        self.assertEqual(len(cockpit.logo.frames), 2)
+        self.assertEqual(cockpit.logo.frames[-1][0], (0, 11, 2))
+
+    def test_idle_restores_keyboard_and_hands_logo_to_controller(self):
+        cockpit = HexpansionCockpit(object())
+        cockpit.keyboard = FakeOutput(5)
+        cockpit.logo = FakeOutput(14)
+        cockpit.logo.controller_available = True
+        cockpit.show_startup(0)
+        cockpit.show_idle(100)
+        self.assertEqual(cockpit.keyboard.releases, 1)
+        self.assertEqual(cockpit.logo.releases, 1)
+
+    def test_idle_uses_logo_aurora_only_when_no_controller_can_take_it(self):
+        cockpit = HexpansionCockpit(object())
+        cockpit.keyboard = FakeOutput(5)
+        cockpit.logo = FakeOutput(14)
+        cockpit.show_startup(0)
+        cockpit.show_idle(500)
+        self.assertEqual(cockpit.keyboard.releases, 1)
+        self.assertEqual(cockpit.logo.releases, 0)
+        self.assertEqual(len(cockpit.logo.frames), 2)
 
 
 class EEHLogoDriverTests(unittest.TestCase):
@@ -159,6 +202,17 @@ class EEHLogoDriverTests(unittest.TestCase):
         with patch("hexpansion_cockpit._eeh_controller_running", return_value=True):
             self.assertFalse(lights.acquire())
         self.assertFalse(lights.active)
+
+    def test_release_to_controller_does_not_clear_its_next_frame(self):
+        pixels = FakePixels([(12, 34, 56)] * 14)
+        lights = EEHLogoLights(6)
+        lights.leds = pixels
+        lights.port = 6
+        lights.active = True
+        with patch("hexpansion_cockpit._eeh_controller_running", return_value=True):
+            self.assertTrue(lights.release_to_controller())
+        self.assertFalse(lights.active)
+        self.assertEqual(pixels.colours, [(12, 34, 56)] * 14)
 
 
 class KeepdexpansionLeaseTests(unittest.TestCase):

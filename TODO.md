@@ -42,10 +42,8 @@ Ideas:
 
 The current EEH software identifies the **EEH Logo as 14 NeoPixels**.
 
-  - [x] **14-pixel Follow Flight progress:** completed green/teal, current segment cyan, remaining dim blue.
-  - [x] **Target-lock state:** smooth cyan while locked; smooth red if target is lost; twin chase for emergency focus.
-  - [x] **Local traffic meter:** one illuminated pixel per visible aircraft up to 14; overflow shown with a pulse/alternate pattern.
-  - [x] **Radar/status animation:** use the logo as a decorative secondary sweep rather than claiming physical bearing until its LED geometry/order is mapped.
+  - [x] **Deliberately simple role:** startup flourish, controller hand-back, decorative fallback ambience and genuine highlight colours only; no pretend traffic or route mapping.
+  - [x] **Emergency focus:** twin-red chase, distinct from the calm ambient orbit.
 - [ ] **Startup/network state:** distinct short animations for GPS acquisition, Wi-Fi and ADS-B connection.
 - [ ] **Vertical-rate/altitude mode:** climb/fall animation for a followed aircraft after physical LED ordering is mapped.
   - [x] Respect the existing EEH app's slot/type configuration, avoid its active background controller, and leave its saved effects untouched.
@@ -55,7 +53,7 @@ The current EEH software identifies the **EEH Logo as 14 NeoPixels**.
 ### Keepdexpansion
 
 - [ ] Refine physical-keyboard Follow Flight entry after hardware testing.
-  - [x] Use keyboard backlight for local traffic, special alerts, journey progress and target lock while preserving and restoring the user's existing backlight state.
+  - [x] Use the keyboard only for the startup flourish and genuine special alerts, while preserving and restoring the user's existing backlight state during ordinary radar use.
 - [ ] Keyboard shortcuts for Follow Flight, page switching, reacquire, details and stop-follow.
 - [ ] One-time keyboard cheat-sheet when Keepdexpansion is first detected.
 
