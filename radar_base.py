@@ -45,6 +45,12 @@ try:
     )
     from .wifi_location import get_wifi_position
     from .route_lookup import build_route_lookup_url, parse_route_label
+    from .hexpansion_cockpit import (
+        HexpansionCockpit,
+        logo_port_label,
+        next_logo_port,
+        normalise_logo_port,
+    )
 except ImportError:
     from radar_math import heading_vector, offset_km, radar_xy, rim_xy
     from adsb import build_url, parse_aircraft
@@ -79,6 +85,12 @@ except ImportError:
     )
     from wifi_location import get_wifi_position
     from route_lookup import build_route_lookup_url, parse_route_label
+    from hexpansion_cockpit import (
+        HexpansionCockpit,
+        logo_port_label,
+        next_logo_port,
+        normalise_logo_port,
+    )
 
 CONFIG_KEY = "plane_radar_tildagon"
 GRID_RADIUS = 94
@@ -88,6 +100,7 @@ DEFAULT_RANGE_INDEX = 2
 RANGE_PROFILE = 2
 POLL_INTERVAL_MS = 5000
 LED_UPDATE_MS = 100
+RADAR_OPTION_COUNT = 10
 COMPASS_UPDATE_MS = 200
 NORMAL_SPLASH_MS = 5000
 FIRST_SPLASH_MS = 5000
@@ -111,6 +124,9 @@ DEFAULT_CONFIG = {
     "manual_bearing": None,
     "led_sweep": True,
     "led_sweep_brightness": 25,
+    "hexpansion_fx": True,
+    "hexpansion_brightness": 25,
+    "eeh_logo_port": "auto",
 }
 
 BACKGROUND = (0.005, 0.045, 0.025)
@@ -303,6 +319,21 @@ class PlaneRadarApp(app.App):
         )
         if self.led_sweep_brightness not in (25, 50, 75, 100):
             self.led_sweep_brightness = 25
+        self.hexpansion_fx = bool(self.config.get("hexpansion_fx", True))
+        self.hexpansion_brightness = int(
+            self.config.get("hexpansion_brightness", 25)
+        )
+        if self.hexpansion_brightness not in (25, 50, 75, 100):
+            self.hexpansion_brightness = 25
+        self.eeh_logo_port = normalise_logo_port(
+            self.config.get("eeh_logo_port", "auto")
+        )
+        self.hexpansion_cockpit = HexpansionCockpit(
+            self,
+            enabled=self.hexpansion_fx,
+            brightness=self.hexpansion_brightness,
+            logo_port=self.eeh_logo_port,
+        )
         self.leds_active = False
         self._acquire_leds()
 
@@ -327,6 +358,9 @@ class PlaneRadarApp(app.App):
                 "manual_bearing": self.manual_bearing,
                 "led_sweep": self.led_sweep,
                 "led_sweep_brightness": self.led_sweep_brightness,
+                "hexpansion_fx": self.hexpansion_fx,
+                "hexpansion_brightness": self.hexpansion_brightness,
+                "eeh_logo_port": self.eeh_logo_port,
             }
         )
         _save_config(self.config)
@@ -795,6 +829,7 @@ class PlaneRadarApp(app.App):
 
     def _update_radar_leds(self):
         if not self.leds_active:
+            self._update_hexpansion_lights(time.ticks_ms())
             return
 
         now_ms = time.ticks_ms()
@@ -811,6 +846,7 @@ class PlaneRadarApp(app.App):
             except Exception as exc:
                 print("plane-radar: demo LED sweep failed:", exc)
                 self._release_leds()
+            self._update_hexpansion_lights(now_ms)
             return
 
         frame = [(0, 0, 0) for _ in range(12)]
@@ -899,13 +935,59 @@ class PlaneRadarApp(app.App):
             print("plane-radar: LED update failed:", exc)
             self._release_leds()
 
+        self._update_hexpansion_lights(now_ms)
         self.sweep_led = self.sweep_led % 12 + 1
 
+    def _update_hexpansion_lights(self, now_ms):
+        """Mirror radar state onto optional keyboard and EEH Logo lights."""
+        self.hexpansion_cockpit.configure(
+            self.hexpansion_fx,
+            self.hexpansion_brightness,
+            self.eeh_logo_port,
+        )
+        if self.view == "traffic_demo":
+            stage = DEMO_STAGES[self.demo_stage]
+            self.hexpansion_cockpit.show_demo(
+                stage["led"], bool(stage.get("emergency")), self.demo_elapsed
+            )
+            return
+
+        traffic = []
+        attention_colours = []
+        if self.center_lat is not None and self.center_lon is not None:
+            for item in self.aircraft:
+                lat = item.get("lat")
+                lon = item.get("lon")
+                if lat is None or lon is None:
+                    continue
+                _east, _north, distance = offset_km(
+                    self.center_lat, self.center_lon, lat, lon
+                )
+                if distance > self.outer_km:
+                    continue
+                colour = self._aircraft_colour(item)
+                rgb = tuple(
+                    max(0, min(255, int(channel * 220))) for channel in colour
+                )
+                traffic.append((distance, rgb))
+                attention = item.get("attention", "")
+                if attention:
+                    alert_colour = self._attention_led_colour(attention)
+                    if alert_colour not in attention_colours:
+                        attention_colours.append(alert_colour)
+
+        traffic.sort(key=lambda contact: contact[0])
+        self.hexpansion_cockpit.show_local(
+            [contact[1] for contact in traffic], attention_colours, now_ms
+        )
+
     def minimise(self):
+        self.hexpansion_cockpit.release()
         self._release_leds()
         super().minimise()
 
     def terminate(self, restore_pattern=False):
+        self.hexpansion_cockpit.release()
         self._release_leds()
         try:
             eventbus.remove(
@@ -1094,6 +1176,39 @@ class PlaneRadarApp(app.App):
             self.led_sweep_brightness = levels[(index + 1) % len(levels)]
             self._persist_preferences()
             self.status = "LED sweep {}%".format(self.led_sweep_brightness)
+        elif self.location_choice == 6:
+            self.hexpansion_fx = not self.hexpansion_fx
+            self._persist_preferences()
+            self.hexpansion_cockpit.configure(
+                self.hexpansion_fx,
+                self.hexpansion_brightness,
+                self.eeh_logo_port,
+            )
+            self.status = "Hexpansion effects " + (
+                "on" if self.hexpansion_fx else "off"
+            )
+        elif self.location_choice == 7:
+            levels = (25, 50, 75, 100)
+            index = levels.index(self.hexpansion_brightness)
+            self.hexpansion_brightness = levels[(index + 1) % len(levels)]
+            self._persist_preferences()
+            self.hexpansion_cockpit.configure(
+                self.hexpansion_fx,
+                self.hexpansion_brightness,
+                self.eeh_logo_port,
+            )
+            self.status = "Hexpansion lights {}%".format(
+                self.hexpansion_brightness
+            )
+        elif self.location_choice == 8:
+            self.eeh_logo_port = next_logo_port(self.eeh_logo_port)
+            self._persist_preferences()
+            self.hexpansion_cockpit.configure(
+                self.hexpansion_fx,
+                self.hexpansion_brightness,
+                self.eeh_logo_port,
+            )
+            self.status = "EEH Logo " + logo_port_label(self.eeh_logo_port)
         else:
             self._start_traffic_demo()
 
@@ -1102,13 +1217,17 @@ class PlaneRadarApp(app.App):
             self.button_states.get(BUTTON_TYPES["LEFT"])
             or self.button_states.get(BUTTON_TYPES["UP"])
         ):
-            self.location_choice = (self.location_choice - 1) % 7
+            self.location_choice = (
+                self.location_choice - 1
+            ) % RADAR_OPTION_COUNT
             self.button_states.clear()
         elif (
             self.button_states.get(BUTTON_TYPES["RIGHT"])
             or self.button_states.get(BUTTON_TYPES["DOWN"])
         ):
-            self.location_choice = (self.location_choice + 1) % 7
+            self.location_choice = (
+                self.location_choice + 1
+            ) % RADAR_OPTION_COUNT
             self.button_states.clear()
         elif self.button_states.get(BUTTON_TYPES["CONFIRM"]):
             self._select_location_option()
@@ -1771,6 +1890,9 @@ class PlaneRadarApp(app.App):
             ),
             "LED SWEEP: " + ("ON" if self.led_sweep else "OFF"),
             "LED LEVEL: {}%".format(self.led_sweep_brightness),
+            "HEX FX: " + ("ON" if self.hexpansion_fx else "OFF"),
+            "HEX LEVEL: {}%".format(self.hexpansion_brightness),
+            "EEH LOGO: " + logo_port_label(self.eeh_logo_port),
             "TRAFFIC DEMO",
         )
         ctx.font_size = 17

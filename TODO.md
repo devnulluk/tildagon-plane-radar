@@ -42,20 +42,20 @@ Ideas:
 
 The current EEH software identifies the **EEH Logo as 14 NeoPixels**.
 
-- [ ] **14-pixel Follow Flight progress:** completed green/teal, current segment cyan, remaining dim blue.
-- [ ] **Target-lock state:** cyan chase while locked; red chase/pulse if target is lost; green arrival sweep near destination.
-- [ ] **Local traffic meter:** one illuminated pixel per visible aircraft up to 14; overflow shown with a pulse/alternate pattern.
-- [ ] **Radar/status animation:** use the logo as a decorative secondary sweep rather than claiming physical bearing until its LED geometry/order is mapped.
+  - [x] **14-pixel Follow Flight progress:** completed green/teal, current segment cyan, remaining dim blue.
+  - [x] **Target-lock state:** smooth cyan while locked; smooth red if target is lost; twin chase for emergency focus.
+  - [x] **Local traffic meter:** one illuminated pixel per visible aircraft up to 14; overflow shown with a pulse/alternate pattern.
+  - [x] **Radar/status animation:** use the logo as a decorative secondary sweep rather than claiming physical bearing until its LED geometry/order is mapped.
 - [ ] **Startup/network state:** distinct short animations for GPS acquisition, Wi-Fi and ADS-B connection.
 - [ ] **Vertical-rate/altitude mode:** climb/fall animation for a followed aircraft after physical LED ordering is mapped.
-- [ ] Respect the existing EEH app's slot/type/effect configuration and restore previous state after Plane Radar releases control.
+  - [x] Respect the existing EEH app's slot/type configuration, avoid its active background controller, and leave its saved effects untouched.
 - [ ] If two EEH boards are fitted, support mirror status or split roles (progress on one, status/traffic on the other).
 - [ ] Reuse sensible generic states on the related EEH Dalek (3 LEDs), TARDIS (5), K9 (1) and Sonic Screwdriver (1) without pretending they are compass displays.
 
 ### Keepdexpansion
 
 - [ ] Refine physical-keyboard Follow Flight entry after hardware testing.
-- [ ] Use keyboard backlight for journey progress / target lock while preserving and restoring the user's existing backlight state.
+  - [x] Use keyboard backlight for local traffic, special alerts, journey progress and target lock while preserving and restoring the user's existing backlight state.
 - [ ] Keyboard shortcuts for Follow Flight, page switching, reacquire, details and stop-follow.
 - [ ] One-time keyboard cheat-sheet when Keepdexpansion is first detected.
 
@@ -190,7 +190,7 @@ Applicable to NeoPixel/Merged-NeoPixel providers and boards such as EEH devices,
 - [ ] Use radial layouts for true bearing only when physical geometry is known.
 - [ ] Use linear layouts for flight progress, altitude or traffic count.
 - [ ] Use decorative layouts for sweep, lock/lost and connection-state animations.
-- [ ] Restore previous LED owner/pattern on exit.
+- [x] Restore previous LED owner/pattern on exit where the provider exposes an ownership contract.
 
 ---
 

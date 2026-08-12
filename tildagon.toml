@@ -10,7 +10,7 @@ class = "PlaneRadarApp"
 author = "devnulluk"
 license = "MIT"
 url = "https://github.com/devnulluk/tildagon-plane-radar"
-description = "Live aircraft radar with flexible location, flight following, fading trails and LED alerts."
+description = "Live aircraft radar with flight following, fading trails and an optional RGB Hexpansion cockpit."
 version = "0.1.4"
 
 [[metadata.capabilities]]

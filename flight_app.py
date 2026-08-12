@@ -1,4 +1,4 @@
-"""Plane Radar entry point with optional flight-follow and Keepdexpansion features."""
+"""Plane Radar entry point with flight-follow and Hexpansion features."""
 
 import random
 import requests
@@ -23,7 +23,6 @@ try:
         route_remaining_km,
         should_end_emergency_follow,
     )
-    from .keebdeck import KeebDeckLights
     from .adsb import build_squawk_url, needs_emergency_focus
     from .led_radar import red_chase_frame
 except ImportError:
@@ -41,7 +40,6 @@ except ImportError:
         route_remaining_km,
         should_end_emergency_follow,
     )
-    from keebdeck import KeebDeckLights
     from adsb import build_squawk_url, needs_emergency_focus
     from led_radar import red_chase_frame
 
@@ -87,7 +85,6 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.emergency_code = None
         self.emergency_simulated = False
         self.emergency_scan_elapsed = 0
-        self.keeb_lights = KeebDeckLights(self)
         self._keyboard_handler = self._handle_keyboard_down
         eventbus.on(ButtonDownEvent, self._keyboard_handler, self)
 
@@ -278,11 +275,9 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.selected_item = None
         self.emergency_code = emergency_code
         self.emergency_simulated = bool(simulated)
-        self.keeb_lights.acquire()
         if emergency_code:
             self.status = "EMERGENCY " + emergency_code
         else:
-            self.keeb_lights.paint(progress=None, locked=True, pulse=True)
             self.status = "Following " + self.follow_query
         return True
 
@@ -365,7 +360,6 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.aircraft = []
         self.selected_item = None
         self.poll_elapsed = base.POLL_INTERVAL_MS
-        self.keeb_lights.release()
         if self.center_lat is None or self.center_lon is None:
             self.status = "Stopped following - no local position"
         else:
@@ -896,28 +890,23 @@ class PlaneRadarApp(base.PlaneRadarApp):
 
     def _update_radar_leds(self):
         if not self.following:
-            self.keeb_lights.release()
             return super()._update_radar_leds()
 
         if self.emergency_code:
             # A steady head-and-tail chase identifies an emergency without
             # flashing the whole badge or repeatedly plunging it into darkness.
-            frame = red_chase_frame(12, time.ticks_ms())
-            self.keeb_lights._write(frame)
+            now_ms = time.ticks_ms()
+            frame = red_chase_frame(12, now_ms)
             try:
                 for led, colour in enumerate(frame, 1):
                     tildagonos.leds[led] = colour
                 tildagonos.leds.write()
             except Exception as exc:
                 print("plane-radar: emergency LED chase failed:", exc)
+            self._update_hexpansion_lights(now_ms)
             return
 
         pulse = (self.sweep_led % 2) == 0
-        self.keeb_lights.paint(
-            progress=self.follow_progress,
-            locked=self.follow_locked,
-            pulse=pulse,
-        )
 
         if self.follow_page == "data":
             frame = self._progress_led_frame(12, pulse)
@@ -927,6 +916,7 @@ class PlaneRadarApp(base.PlaneRadarApp):
                 tildagonos.leds.write()
             except Exception as exc:
                 print("plane-radar: follow LED update failed:", exc)
+            self._update_hexpansion_lights(time.ticks_ms())
             self.sweep_led = self.sweep_led % 12 + 1
             return
 
@@ -967,12 +957,25 @@ class PlaneRadarApp(base.PlaneRadarApp):
         except Exception as exc:
             print("plane-radar: target LED overlay failed:", exc)
 
+    def _update_hexpansion_lights(self, now_ms):
+        if not self.following:
+            return super()._update_hexpansion_lights(now_ms)
+        self.hexpansion_cockpit.configure(
+            self.hexpansion_fx,
+            self.hexpansion_brightness,
+            self.eeh_logo_port,
+        )
+        self.hexpansion_cockpit.show_follow(
+            self.follow_progress,
+            self.follow_locked,
+            bool(self.emergency_code),
+            now_ms,
+        )
+
     def minimise(self):
-        self.keeb_lights.release()
         super().minimise()
 
     def terminate(self, restore_pattern=False):
-        self.keeb_lights.release()
         try:
             eventbus.remove(ButtonDownEvent, self._keyboard_handler, self)
         except Exception:
