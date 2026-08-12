@@ -30,6 +30,7 @@ jobs:
         run: >-
           python -m py_compile
           __init__.py adsb.py app.py flight_app.py flight_follow.py
-          instructions_qr.py keebdeck.py led_radar.py location_provider.py
+          hexpansion_cockpit.py instructions_qr.py keebdeck.py led_radar.py
+          location_provider.py
           postcode.py radar_base.py radar_math.py route_lookup.py spaceagon.py
           wifi_location.py
