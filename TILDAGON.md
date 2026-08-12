@@ -48,7 +48,7 @@ for interest only and must not be treated as an authoritative emergency alert.
 
 When no location is available, the empty radar is replaced by a full-screen, round-safe recovery page. C or keyboard Enter goes directly to postcode entry, typing a postcode character opens the same field with that character preserved, and Down retries automatic positioning. The automatic/manual chooser remains available after a location has been established.
 
-Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, **LED Sweep**, **LED Level**, **Hex FX**, **Hex Level**, **EEH Logo**, or **Traffic Demo** with the joystick, any keyboard arrow pair, or physical E/B, then press C or keyboard Enter. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate, bearing and callsign fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
+Press **C/Confirm** to open the large-text radar options. Select **Auto GPS / Wi-Fi**, **UK Postcode**, **Coordinates**, **Bearing**, **LED Sweep**, **LED Level**, **Hex FX**, **Key Level**, **Logo Level**, **EEH Logo**, or **Traffic Demo** with the joystick, any keyboard arrow pair, or physical E/B, then press C or keyboard Enter. UK postcodes are looked up through Postcodes.io (no API key required); spaces and letter case are optional. After a successful lookup, the postcode is saved and prefilled next time. Submit postcode, coordinate, bearing and callsign fields with physical C or keyboard Enter. Decimal latitude/longitude entry remains available and saved manual locations remain available when automatic positioning fails.
 
 ## Standard controls
 
@@ -138,31 +138,32 @@ On the alternating flight-data page the 12 badge LEDs become a journey-progress 
 
 When Plane Radar is minimised or terminated it restores the normal Tildagon LED pattern.
 
-## Hexpansion cockpit
+## Hexpansion lighting
 
-The optional Keepdexpansion RGB backlight and 14-pixel East Essex Hackspace Logo use a shared, deliberately non-directional status language. Plane Radar does not pretend the Logo's LED order is a compass until its physical geometry has been mapped.
+The optional Keepdexpansion RGB backlight and 14-pixel East Essex Hackspace Logo are ambient and exceptional-traffic lighting, not another radar. Plane Radar does not pretend their pixels show aircraft positions or physical bearings.
 
-In local radar mode:
+Their intentionally small set of states is:
 
-- one logical segment is lit per visible aircraft, nearest first: up to five keyboard zones and fourteen Logo pixels;
-- if traffic exceeds the available segments, the full meter breathes gently and rotates through the remaining aircraft;
-- no traffic produces a quiet green scanner rather than a static strip;
-- interesting, air-ambulance, police and military traffic produces the same amber, green, blue or red sweep used by the Traffic Guide; several categories take turns;
-- colours follow the same aircraft classification used on screen.
+- startup: a short green radar flourish on available, unclaimed lights;
+- ordinary radar and ordinary Follow Flight: the keyboard is restored and left alone;
+- air ambulance, police, military or other highlighted traffic: a calm full-colour keyboard field and a matching Logo sweep;
+- multiple highlights: each category colour is presented in turn;
+- 7700: red alert lighting with the Logo's twin-red chase;
+- no EEH controller available: a slow decorative green-and-cyan Logo aurora with no data meaning.
 
-While following a flight, both expansions become journey bars: completed segments are teal/green, the current segment is cyan and the remainder is dim blue. Unknown progress gives a smooth cyan heartbeat; loss of target lock becomes a smooth red pulse. Emergency focus replaces all of those states with the twin-red chase. The on-screen Traffic Guide also drives both expansions, so every colour and motion can be previewed without waiting for unusual traffic.
+The on-screen Traffic Guide drives the alert states too, so every colour and motion can be previewed without waiting for unusual traffic.
 
-**Hex FX** is enabled by default at **25% brightness**, independently of the onboard LED-sweep setting. Change it with **Radar Options > Hex FX / Hex Level**.
+**Hex FX** is enabled independently of the onboard LED-sweep setting. The keyboard defaults to **100%**, while the brighter 14-pixel Logo defaults to **10%**. Change them independently with **Radar Options > Key Level / Logo Level**. Logo choices are **5%, 10%, 25%, 50%, 75% and 100%**.
 
 ### Keepdexpansion ownership
 
-Plane Radar discovers the keyboard through its normal NeoPixel capability and leases its logical RGB zones only when the keyboard driver says they are free. It does not depend on the physical nine-LED grouping. When Hex FX is disabled, the app is minimised, or it terminates, ownership is released. A previous static custom colour is restored; a keyboard following the normal Tildagon pattern resumes that pattern.
+Plane Radar discovers the keyboard through its normal NeoPixel capability and leases its logical RGB zones only for startup or an active highlight, and only when the keyboard driver says they are free. It does not depend on the physical nine-LED grouping. During ordinary radar use, when Hex FX is disabled, when the app is minimised, or when it terminates, ownership is released. A previous static custom colour is restored; a keyboard following the normal Tildagon pattern resumes that pattern.
 
 ### EEH Logo port selection
 
 The EEH Logo does not currently advertise the shared light-owner capability. Its official controller instead saves a board type for each physical Hexpansion slot. The default **EEH Logo: Auto** mode honours the first slot explicitly configured as `EEH Logo` by that controller and never probes an unknown output pin.
 
-If no official slot assignment exists, choose **Radar Options > EEH Logo** repeatedly to cycle through **Off**, **Port 1** … **Port 6**, then back to **Auto**. A manual port is an explicit hardware instruction: select one only when the 14-pixel EEH Logo is connected there. If the standalone EEH effect controller is still active in the background, Plane Radar pauses its Logo output rather than racing it. Plane Radar does not alter the EEH controller's saved palette/effect settings, and clears its own Logo frame when it releases the board.
+If no official slot assignment exists, choose **Radar Options > EEH Logo** repeatedly to cycle through **Off**, **Port 1** … **Port 6**, then back to **Auto**. A manual port is an explicit hardware instruction: select one only when the 14-pixel EEH Logo is connected there. If the standalone EEH effect controller is active, Plane Radar yields immediately rather than racing it and does not alter its saved palette or effect. Without a running controller, Plane Radar retains the explicitly configured Logo only for its low-brightness ambient orbit and genuine highlights.
 
 ## Spaceagon enhancements
 

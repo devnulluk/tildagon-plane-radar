@@ -963,14 +963,25 @@ class PlaneRadarApp(base.PlaneRadarApp):
         self.hexpansion_cockpit.configure(
             self.hexpansion_fx,
             self.hexpansion_brightness,
+            self.eeh_logo_brightness,
             self.eeh_logo_port,
         )
-        self.hexpansion_cockpit.show_follow(
-            self.follow_progress,
-            self.follow_locked,
-            bool(self.emergency_code),
-            now_ms,
-        )
+        if self.emergency_code:
+            self.hexpansion_cockpit.show_highlight([], True, now_ms)
+            return
+
+        attention_colours = self._visible_attention_colours()
+        target_attention = (self.follow_target or {}).get("attention", "")
+        if target_attention:
+            colour = self._attention_led_colour(target_attention)
+            if colour not in attention_colours:
+                attention_colours.append(colour)
+        if attention_colours:
+            self.hexpansion_cockpit.show_highlight(
+                attention_colours, False, now_ms
+            )
+        else:
+            self.hexpansion_cockpit.show_idle(now_ms)
 
     def minimise(self):
         super().minimise()

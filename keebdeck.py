@@ -134,7 +134,7 @@ class KeebDeckLights:
             return 0
 
     def write(self, colours):
-        """Public frame writer used by the Hexpansion cockpit."""
+        """Public frame writer used by Plane Radar's expansion lighting."""
         return self._write(colours)
 
 def _ticks_ms():
